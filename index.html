@@ -1,587 +1,457 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>IAT Digital — Cyber Pathways (v2)</title>
-    <!-- Tailwind Play CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>$1
-      /* ====== Cinematic lane shimmer & subtle grain ====== */
-      .lane-bg{ background-image: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.25) 50%, rgba(255,255,255,0) 100%); background-size: 240% 100%; animation: shimmer 10s linear infinite; }
-      @keyframes shimmer { 0%{ background-position: 200% 0; } 100%{ background-position: -200% 0; } }
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { motion, useScroll, useSpring, useTransform } from "framer-motion";
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
 
-      /* Tooltip */
-      #tt{ position:fixed; pointer-events:none; z-index:100; padding:6px 8px; border-radius:8px; font-size:12px; line-height:1; background:#0f172a; color:#fff; box-shadow:0 8px 24px rgba(0,0,0,.25); display:none; }
+/**
+ * IAT Digital – Landing Page Clone Scaffold
+ * ---------------------------------------------------------
+ * What this gives you (out‑of‑the‑box):
+ *  - A modern landing page structure with animation hooks that can be tuned
+ *    to closely match a reference site’s motion language without copying code.
+ *  - Sections for course promos + Australian labour‑market insights.
+ *  - ABS (Australian Bureau of Statistics) SDMX‑JSON adapter + example charts.
+ *  - A single‑file component, easy to drop into OpenLearning (OL) iframed widgets.
+ *
+ * How to use:
+ *  1) Replace BRAND + tokens in THEME to match your target page.
+ *  2) Swap MOCK data for live ABS API data by uncommenting `fetchABS()` calls
+ *     and filling in dataset + keyed dimensions (see ABS Data API user guide).
+ *  3) Populate `COURSES` with IAT Digital offerings.
+ *
+ * Legal note:
+ *  This file emulates interactions/layout generically and does NOT copy any
+ *  proprietary assets or source from another site. Use it to achieve a
+ *  pixel‑close feel while staying on the right side of IP.
+ */
 
-      /* Soft glow on highlighted edges */
-      .cy-edge-glow{ filter: drop-shadow(0 0 6px rgba(16,185,129,.55)); }
-    </style>
-    <!-- Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- PapaParse for CSV -->
-    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-    <!-- Cytoscape for graph -->
-    <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
-  </head>
-  <body class="bg-slate-50 text-slate-900">
-    <div id="toast"></div>
-    <div class="mx-auto max-w-[1200px] px-4 py-6">
-      <header class="mb-4 flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <svg width="32" height="32" viewBox="0 0 24 24" class="text-indigo-600"><path fill="currentColor" d="M12 2L2 7l10 5l10-5zm0 7L2 4v13l10 5l10-5V4z"/></svg>
-          <div>
-            <h1 class="text-xl sm:text-2xl font-bold leading-tight">IAT Digital — Cyber Career Pathways</h1>
-            <p class="text-sm text-slate-600">Interactive pathways + live data + IAT course mapping (v2)</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-3 text-xs">
-          <a id="sourceLink" href="#" target="_blank" class="text-indigo-700 hover:text-indigo-900 underline">Data source</a>
-          <button id="savePng" class="rounded-lg border border-slate-300 bg-white px-2 py-1">Save PNG</button>
-        </div>
-      </header>
+// —————————————————————————————————————————————
+// THEME TOKENS – tweak these to mimic a reference site
+// —————————————————————————————————————————————
+const THEME = {
+  brand: {
+    name: "IAT Digital",
+    primary: "from-indigo-500 via-sky-500 to-cyan-400",
+    accent: "#0ea5e9", // tailwind sky-500
+    dark: "#0b1020",
+    light: "#f8fafc",
+  },
+  radius: {
+    xl: "rounded-2xl",
+    lg: "rounded-xl",
+  },
+  motion: {
+    duration: 0.9,
+    delay: 0.08,
+    ease: [0.16, 1, 0.3, 1] as [number, number, number, number], // power‑easing
+    parallaxStrength: 120,
+  },
+  layout: {
+    max: "max-w-7xl",
+    gutter: "px-5 sm:px-8",
+  },
+};
 
-      <!-- Controls -->
-      <section class="mb-4 grid grid-cols-1 gap-3">
-        <!-- Row 1: Search & knobs -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div class="md:col-span-2 flex gap-2">
-            <input id="searchBox" type="text" placeholder="Search roles… (e.g., Analyst, Architect, Penetration)" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            <button id="clearBtn" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">Clear</button>
-          </div>
-          <div class="flex items-center gap-2">
-            <label for="similarity" class="text-sm text-slate-700">Pathway sensitivity</label>
-            <input id="similarity" type="range" min="0" max="100" value="30" class="w-full" />
-            <span id="similarityVal" class="text-xs w-10 text-right">0.30</span>
-          </div>
-          <div class="flex items-center gap-2">
-            <input id="cyberOnly" type="checkbox" class="h-4 w-4" checked>
-            <label for="cyberOnly" class="text-sm text-slate-700">Cyber/Security roles only</label>
-          </div>
-        </div>
+// —————————————————————————————————————————————
+// UTIL: fade/slide in
+// —————————————————————————————————————————————
+const MotionWrap: React.FC<React.PropsWithChildren<{ delay?: number }>> = ({ children, delay = 0 }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 24 }}
+    whileInView={{ opacity: 1, y: 0 }}
+    viewport={{ once: true, amount: 0.3 }}
+    transition={{ duration: THEME.motion.duration, ease: THEME.motion.ease, delay }}
+  >
+    {children}
+  </motion.div>
+);
 
-        <!-- Row 2: Path planner -->
-        <div class="grid grid-cols-1 md:grid-cols-6 gap-2">
-          <select id="startRole" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">
-            <option value="">Start role…</option>
-          </select>
-          <select id="targetRole" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">
-            <option value="">Target role…</option>
-          </select>
-          <button id="pathBtn" class="rounded-xl bg-indigo-600 text-white px-3 py-2 text-sm shadow-sm hover:bg-indigo-700">Show pathway</button>
-          <button id="playBtn" class="rounded-xl bg-emerald-600 text-white px-3 py-2 text-sm shadow-sm hover:bg-emerald-700">Animate path</button>
-          <button id="focusBtn" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">Focus mode</button>
-          <button id="resetBtn" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">Reset</button>
-        </div>
+// —————————————————————————————————————————————
+// MOCK: sample series for charts (swap with live ABS later)
+// —————————————————————————————————————————————
+const MOCK_UNEMPLOYMENT = [
+  { period: "2024-08", value: 4.2 },
+  { period: "2024-09", value: 4.1 },
+  { period: "2024-10", value: 4.3 },
+  { period: "2024-11", value: 4.2 },
+  { period: "2024-12", value: 4.1 },
+  { period: "2025-01", value: 4.2 },
+  { period: "2025-02", value: 4.0 },
+  { period: "2025-03", value: 4.1 },
+  { period: "2025-04", value: 4.1 },
+  { period: "2025-05", value: 4.2 },
+  { period: "2025-06", value: 4.1 },
+  { period: "2025-07", value: 4.0 },
+];
 
-        <!-- Row 3: Advanced filters -->
-        <div class="rounded-2xl border border-slate-200 bg-white p-3 grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div>
-            <div class="text-xs font-semibold mb-1">Domain</div>
-            <div class="flex flex-wrap gap-2 text-xs">
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="SOC" checked> SOC/IR</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="GRC" checked> GRC</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="ARCH" checked> Architecture</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="PENTEST" checked> Pentest</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="CLOUD" checked> Cloud</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="APPSEC" checked> AppSec</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="THREAT" checked> Threat Intel</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="IAM" checked> IAM</label>
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-semibold mb-1">Seniority</div>
-            <div class="flex flex-wrap gap-2 text-xs">
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="level" value="0" checked> Entry</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="level" value="1" checked> Associate</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="level" value="2" checked> Senior</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="level" value="3" checked> Lead/Principal</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" class="level" value="4" checked> Manager/Exec</label>
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-semibold mb-1">Filter by SFIA code</div>
-            <input id="sfiaFilter" type="text" placeholder="e.g., BURM, INAS, PENT" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs shadow-sm" />
-            <div class="mt-2 text-[11px] text-slate-500">Matches Critical/Desirable skills</div>
-          </div>
-          <div class="flex items-center gap-3">
-            <label class="inline-flex items-center gap-2 text-sm"><input id="hasIat" type="checkbox" class="h-4 w-4"> Only roles with IAT mapping</label>
-            <label class="inline-flex items-center gap-2 text-sm"><input id="laneView" type="checkbox" class="h-4 w-4"> Lane view</label>
-            <label class="inline-flex items-center gap-2 text-sm"><input id="liveJobs" type="checkbox" class="h-4 w-4"> Live job counts</label>
-          </div>
-        </div>
-      </section>
+const MOCK_VACANCIES = [
+  { period: "2024-Q3", vacancies: 430000 },
+  { period: "2024-Q4", vacancies: 425000 },
+  { period: "2025-Q1", vacancies: 420000 },
+  { period: "2025-Q2", vacancies: 415000 },
+];
 
-      <!-- Main layout -->
-      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <!-- Graph -->
-        <div class="lg:col-span-2 rounded-2xl bg-white p-3 shadow-sm border border-slate-200">
-          <div class="mb-2 flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-slate-800">Role pathways graph</h2>
-            <div class="text-xs text-slate-500">Drag to move • Scroll to zoom • Click a node</div>
-          </div>
-          <div class="lanes w-full rounded-xl border border-slate-200 iframe-ideal relative">
-            <div class="lane-bg"></div><div class="lane-bg"></div><div class="lane-bg"></div><div class="lane-bg"></div><div class="lane-bg"></div>
-            <div id="graph" class="absolute inset-0"></div>
-            <div id="tt"></div>
-          
-          </div>
-          <div class="mt-2 text-[11px] text-slate-500">Legend: arrow shows suggested direction of progression; thicker lines = stronger skill overlap; dashed motion indicates pathway flow.</div>
-        </div>
+// —————————————————————————————————————————————
+// ABS SDMX‑JSON helper (generic)
+// —————————————————————————————————————————————
+const ABS_BASE = "https://api.data.abs.gov.au"; // SDMX REST (Beta)
 
-        <!-- Details panel -->
-        <aside class="rounded-2xl bg-white p-4 shadow-sm border border-slate-200">
-          <div class="flex items-center justify-between">
-            <h2 class="text-base font-semibold">Role details</h2>
-            <button id="copyLinkBtn" class="text-xs text-indigo-700 underline">Copy deep-link</button>
-          </div>
-          <div id="roleEmpty" class="mt-6 text-sm text-slate-500">Select a role from the graph to see skills, description, IAT mapping and live job openings.</div>
-          <div id="rolePanel" class="hidden">
-            <h3 id="roleName" class="mt-1 text-lg font-bold"></h3>
-            <p id="roleDesc" class="mt-1 text-sm text-slate-700"></p>
-
-            <div id="jobsPill" class="mt-2 hidden text-xs inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2 py-1 border border-emerald-200">Jobs: <span id="jobCount">—</span></div>
-
-            <div class="mt-4">
-              <h4 class="text-sm font-semibold">Critical SFIA skills</h4>
-              <ul id="criticalList" class="mt-1 list-disc list-inside text-sm text-slate-800 space-y-1"></ul>
-            </div>
-            <div class="mt-3">
-              <h4 class="text-sm font-semibold">Desirable SFIA skills</h4>
-              <ul id="desirableList" class="mt-1 list-disc list-inside text-sm text-slate-800 space-y-1"></ul>
-            </div>
-
-            <div class="mt-4">
-              <h4 class="text-sm font-semibold">IAT Digital study options mapped to this role</h4>
-              <div id="courses" class="mt-2 space-y-2"></div>
-            </div>
-
-            <div class="mt-4 border-t pt-3 text-xs text-slate-500">
-              <div>Discipline: <span id="roleDiscipline"></span></div>
-              <div>Aliases: <span id="roleAliases"></span></div>
-              <a id="roleProfileLink" href="#" target="_blank" class="underline text-indigo-700"></a>
-            </div>
-          </div>
-        </aside>
-      </section>
-
-      <!-- Footer / Attribution -->
-      <footer class="mt-6 text-xs text-slate-500">
-        <p>Role and skills data retrieved from the Australian Public Service Commission’s open <span class="font-medium">APS Career Pathfinder</span> dataset (Digital Profession Roles, SFIA-aligned). SFIA skill names from SFIA v8 dataset. Job counts via optional Cloudflare Worker proxy to Adzuna API. All non‑IAT data remains subject to its original licence.</p>
-      </footer>
-    </div>
-
-    <!-- Inline JSON you can edit or later replace with a Google Sheet CSV -->
-    <script id="iat-courses" type="application/json">
-      {
-        "courses": [
-          {"name":"Security Operations Centre (SOC) Analyst Bootcamp","provider":"IAT Digital","code":"IAT-SOC","delivery":"Blended","link":"https://study.iat.nsw.edu.au/","mapsTo":["Security Operations","SOC Analyst","Incident Responder","Security Analyst"]},
-          {"name":"AI-900: Microsoft Azure AI Fundamentals (Microskill Track)","provider":"IAT Digital × Microsoft","code":"AI-900","delivery":"Online","link":"https://learn.microsoft.com/en-au/certifications/exams/ai-900/","mapsTo":["Security Engineer","Security Architect","Cloud Security Engineer"]},
-          {"name":"Cloud Skills Accelerator (Azure Foundational Security)","provider":"IAT Digital","code":"CSA-Azure-Sec","delivery":"Hybrid","link":"https://study.iat.nsw.edu.au/","mapsTo":["Cloud Security Engineer","Security Engineer","DevSecOps"]},
-          {"name":"Data Skills Accelerator (Python for Security Analytics)","provider":"IAT Digital","code":"DSA-PySec","delivery":"Hybrid","link":"https://study.iat.nsw.edu.au/","mapsTo":["Threat Intelligence","Security Analyst","Incident Responder"]}
-        ]
-      }
-    </script>
-
-    <script>
-      // --------- Config: live open data + optional jobs proxy ---------
-      const DIGITAL_ROLES_CSV = "https://data.gov.au/data/dataset/1875234c-bf08-4c5e-ab0c-74634957f1bf/resource/8e5e7641-589c-4376-8b53-9f2fb1561fe7/download/typical-aps-roles-master-sfia9-rolesexport-digital-prof-11.csv"; // keep updated when dataset changes
-      const SFIA8_CSV = "https://data.gov.au/data/dataset/1875234c-bf08-4c5e-ab0c-74634957f1bf/resource/043ae065-7167-44c5-a6da-b33efe05f4ec/download/sfia-skills-8.csv";
-      // Optional: set to your Cloudflare Worker endpoint, e.g., 'https://iat-cyber-jobs.yourname.workers.dev/jobs?role='
-      const JOB_API = '';
-
-      const state = {
-        roles: [], // filtered roles
-        allRoles: [], // full downloaded roles
-        sfiaByCode: new Map(),
-        cy: null,
-        selectedRoleId: null,
-        focusMode: false,
-        lastPath: [],
-        laneView: false
-      };
-
-      // Utility to normalise lists split by semicolons or commas
-      function splitList(val) { if (!val) return []; return String(val).split(/[;,]/).map((s) => s.trim()).filter(Boolean); }
-      function asCode(s){ return s ? s.toUpperCase() : s; }
-
-      // Heuristics for domain & level (seniority)
-      function detectDomain(name){
-        const s = name.toLowerCase();
-        if (/(soc|operations|incident|responder)/.test(s)) return 'SOC';
-        if (/(grc|governance|risk|compliance|assurance)/.test(s)) return 'GRC';
-        if (/(architect)/.test(s)) return 'ARCH';
-        if (/(pen.?test|red team|ethical hacker)/.test(s)) return 'PENTEST';
-        if (/(cloud|azure|aws|gcp)/.test(s)) return 'CLOUD';
-        if (/(appsec|application security|secure coding|devsecops)/.test(s)) return 'APPSEC';
-        if (/(threat|intelligence)/.test(s)) return 'THREAT';
-        if (/(iam|identity|access)/.test(s)) return 'IAM';
-        return 'OTHER';
-      }
-      function detectLevel(name){
-        const s = name.toLowerCase();
-        if (/^(head|chief|director|manager|executive)/.test(s)) return 4; // Manager/Exec
-        if (/(principal|lead)/.test(s)) return 3; // Lead/Principal
-        if (/(senior)/.test(s)) return 2; // Senior
-        if (/(associate|junior|assistant|graduate)/.test(s)) return 1; // Associate/Junior
-        return 0; // Entry/Analyst
-      }
-
-      function isCyberRole(role){
-        const name = (role.name || '').toLowerCase();
-        const disc = (role.discipline || '').toLowerCase();
-        return (
-          disc.includes('cyber') || disc.includes('security') ||
-          name.includes('security') || name.includes('cyber') ||
-          name.includes('pen test') || name.includes('penetration') ||
-          name.includes('threat') || name.includes('incident') ||
-          name.includes('governance, risk') || name.includes('grc')
-        );
-      }
-
-      function buildRoleObject(row){
-        const crit = splitList(row.critical_skills).map(asCode);
-        const des = splitList(row.desirable_skills).map(asCode);
-        const name = row.name || '';
-        return {
-          id: row.id || row.name,
-          name,
-          description: row.description || '',
-          discipline: row.discipline || '',
-          aliases: splitList(row.alias).join(', '),
-          profile_link: row.profile_link || '',
-          critical_skills: crit,
-          desirable_skills: des,
-          domain: detectDomain(name),
-          level: detectLevel(name)
-        };
-      }
-
-      function jaccard(a,b){ const A = new Set(a), B = new Set(b); const inter = [...A].filter(x => B.has(x)).length; const uni = new Set([...a, ...b]).size; return uni === 0 ? 0 : inter / uni; }
-
-      function computeEdges(roles, threshold){
-        const edges = [];
-        for (let i=0;i<roles.length;i++){
-          for (let j=i+1;j<roles.length;j++){
-            const s = jaccard(roles[i].critical_skills, roles[j].critical_skills);
-            if (s >= threshold){ edges.push({ source: roles[i].id, target: roles[j].id, weight: s }); }
-          }
-        }
-        return edges;
-      }
-
-      function populateRoleSelects(){
-        const startSel = document.getElementById('startRole');
-        const targetSel = document.getElementById('targetRole');
-        const opts = state.roles.length ? state.roles : state.allRoles;
-        const make = r => `<option value="${r.id}">${r.name}</option>`;
-        startSel.innerHTML = ['<option value="">Start role…</option>'].concat(opts.map(make)).join('');
-        targetSel.innerHTML = ['<option value="">Target role…</option>'].concat(opts.map(make)).join('');
-      }
-
-      function nodeStyle(){
-        return [
-          { selector: 'core', style: { 'selection-box-color': '#a5b4fc', 'selection-box-opacity': 0.15 }},
-          { selector: 'node', style: {
-            'background-color': '#6366f1', 'label': 'data(label)', 'color': '#0f172a', 'font-size': 11,
-            'text-wrap': 'wrap', 'text-max-width': 120, 'text-valign': 'center', 'text-halign': 'center',
-            'width': 18,'height': 18,'border-width': 2,'border-color': '#c7d2fe',
-            'transition-property': 'background-color, border-color, width, height, opacity, text-outline-width, text-outline-color',
-            'transition-duration': '300ms','transition-timing-function':'ease-in-out'
-          }},
-          { selector: 'edge', style: {
-            'width': 'mapData(weight, 0, 1, 1, 6)', 'line-color': '#94a3b8', 'curve-style': 'straight',
-            'line-style': 'dashed', 'line-dash-pattern': [10,6], 'target-arrow-shape': 'triangle', 'target-arrow-color': '#94a3b8', 'opacity': 0.85,
-            'arrow-scale': 0.9,
-            'transition-property': 'line-color, width, opacity, line-dash-offset',
-            'transition-duration': '300ms','transition-timing-function':'ease-in-out'
-          }},
-          { selector: 'node:selected', style: { 'background-color': '#22c55e','border-color': '#bbf7d0','width':22,'height':22, 'text-outline-color':'#ecfccb','text-outline-width':2 }},
-          { selector: '.faded', style: { 'opacity': 0.12 } },
-          { selector: '.highlighted', style: { 'background-color': '#ef4444','border-color': '#fecaca','opacity': 1, 'width':20,'height':20 } },
-          { selector: '.path', style: { 'background-color': '#10b981', 'line-color': '#10b981', 'target-arrow-color': '#10b981', 'width': 'mapData(weight, 0, 1, 2, 8)' }},
-          { selector: 'edge.path', style: { 'shadow-blur': 6, 'shadow-color': '#34d399', 'shadow-opacity': 0.9 } }
-        ];
-      }},
-          { selector: 'edge', style: {
-            'width': 'mapData(weight, 0, 1, 1, 6)', 'line-color': '#94a3b8', 'curve-style': 'straight',
-            'line-style': 'dashed', 'line-dash-pattern': [6,4], 'target-arrow-shape': 'triangle', 'target-arrow-color': '#94a3b8', 'opacity': 0.8
-          }},
-          { selector: 'node:selected', style: { 'background-color': '#22c55e','border-color': '#bbf7d0' }},
-          { selector: '.faded', style: { 'opacity': 0.12 } },
-          { selector: '.highlighted', style: { 'background-color': '#ef4444','border-color': '#fecaca','opacity': 1 } },
-          { selector: '.path', style: { 'background-color': '#10b981', 'line-color': '#10b981', 'target-arrow-color': '#10b981', 'width': 'mapData(weight, 0, 1, 2, 8)' }}
-        ];
-      }
-
-      function laneLayoutPositions(roles){
-        // preset positions by level (0..4) across Y; X distributed
-        const width = document.getElementById('graph').clientWidth;
-        const height = document.getElementById('graph').clientHeight;
-        const cols = 4; // spread in each lane
-        const positions = {};
-        const buckets = [[],[],[],[],[]];
-        roles.forEach(r => buckets[r.level].push(r));
-        buckets.forEach((arr, li) => {
-          const laneTop = (height * (li*0.2)) + 40;
-          const laneBottom = Math.min(height * ((li+1)*0.2) - 40, height-40);
-          arr.forEach((r, idx) => {
-            const x = 80 + (idx % cols) * ((width-160)/Math.max(cols-1,1));
-            const y = laneTop + Math.floor(idx/cols) * 40;
-            positions[r.id] = { x, y: Math.min(y, laneBottom) };
-          });
-        });
-        return positions;
-      }
-
-      function renderGraph(){
-        const container = document.getElementById('graph');
-        const threshold = Number(document.getElementById('similarity').value) / 100;
-        document.getElementById('similarityVal').textContent = threshold.toFixed(2);
-
-        const nodes = state.roles.map(r => ({ data: { id: r.id, label: r.name, level: r.level, domain: r.domain } }));
-        const edges = computeEdges(state.roles, threshold).map(e => ({ data: e }));
-
-        if (state.cy){ state.cy.destroy(); }
-        state.cy = cytoscape({ container, elements: { nodes, edges }, style: nodeStyle(), layout: { name: state.laneView ? 'preset' : 'cose', animate: true, animationDuration: 600, animationEasing: 'ease-in-out-quad' } });
-
-        if (state.laneView){
-          const pos = laneLayoutPositions(state.roles);
-          state.cy.nodes().forEach(n => { const p = pos[n.id()]; if (p) n.position(p); });
-          state.cy.fit(undefined, 20);
-        }
-
-        // Edge dash animation (flow)
-        let dash = 0; function tick(){ dash = (dash + 1) % 24; state.cy.style().selector('edge').style('line-dash-offset', dash).update(); requestAnimationFrame(tick); } requestAnimationFrame(tick); } requestAnimationFrame(tick);
-
-        // Smooth auto-pan on select
-        state.cy.on('tap', 'node', (evt) => {
-          const id = evt.target.id();
-          const role = state.roles.find(r => r.id === id);
-          if (role) selectRole(role);
-          state.cy.animate({ center: { eles: evt.target }, duration: 420, easing: 'ease-in-out-cubic' });
-          if (state.focusMode) focusNeighborhood(id);
-        });
-        state.cy.on('mouseover', 'node', (evt) => { evt.target.addClass('highlighted'); showTip(evt.renderedPosition, evt.target.data('label')); });
-        state.cy.on('mouseout', 'node', (evt) => { evt.target.removeClass('highlighted'); hideTip(); });
-
-        populateRoleSelects();
-      }
-
-      function clearStyles(){ state.cy.elements().removeClass('faded path highlighted'); }
-      function focusNeighborhood(nodeId){ clearStyles(); const n = state.cy.getElementById(nodeId); const nb = n.closedNeighborhood(); state.cy.elements().not(nb).addClass('faded'); nb.removeClass('faded'); }
-
-      function shortestPath(startId, targetId){
-        if (!startId || !targetId || startId === targetId) return [];
-        const threshold = Number(document.getElementById('similarity').value) / 100;
-        const edges = computeEdges(state.roles, threshold);
-        const adj = new Map(); function add(u,v){ if(!adj.has(u)) adj.set(u,[]); adj.get(u).push(v); }
-        edges.forEach(e => { add(e.source, e.target); add(e.target, e.source); });
-        const q=[startId]; const prev=new Map([[startId,null]]);
-        while(q.length){ const u=q.shift(); if(u===targetId) break; (adj.get(u)||[]).forEach(v=>{ if(!prev.has(v)){ prev.set(v,u); q.push(v);} }); }
-        if(!prev.has(targetId)) return [];
-        const path=[]; let cur=targetId; while(cur){ path.push(cur); cur=prev.get(cur); } return path.reverse();
-      }
-
-      function highlightPath(path){
-        clearStyles(); if (!path.length) return; const ids = new Set(path);
-        state.cy.nodes().forEach(n=>{ if(!ids.has(n.id())) n.addClass('faded'); });
-        // Tag edges in the path (we'll reveal them with animation)
-        for(let i=0;i<path.length-1;i++){
-          const a=path[i], b=path[i+1];
-          state.cy.edges().forEach(e=>{ const s=e.data('source'), t=e.data('target'); if((s===a && t===b) || (s===b && t===a)) e.addClass('path'); });
-        }
-        state.lastPath = path.slice();
-      }
-      async function animatePath(path){
-        if (!path || path.length < 2) return;
-        // sequentially reveal nodes/edges and fly camera along
-        for (let i=0; i<path.length; i++){
-          const id = path[i]; const node = state.cy.getElementById(id);
-          node.addClass('path');
-          state.cy.animate({ center: { eles: node }, duration: 500, easing: 'ease-in-out-quart' });
-          if (i>0){
-            const prev = path[i-1];
-            state.cy.edges().forEach(e=>{ const s=e.data('source'), t=e.data('target'); if((s===prev && t===id) || (s===id && t===prev)) e.addClass('path'); });
-          }
-          await new Promise(r => setTimeout(r, 420));
-        }
-      });
-        for(let i=0;i<path.length-1;i++){
-          const a=path[i], b=path[i+1];
-          state.cy.edges().forEach(e=>{ const s=e.data('source'), t=e.data('target'); if((s===a && t===b) || (s===b && t===a)) e.addClass('path'); });
-        }
-        state.lastPath = path.slice();
-      }
-
-      async function fetchJobs(roleName){
-        if (!JOB_API) return null;
-        try {
-          const res = await fetch(JOB_API + encodeURIComponent(roleName));
-          if (!res.ok) return null; const data = await res.json(); return data.count ?? data.total ?? null;
-        } catch(e){ return null; }
-      }
-
-      async function selectRole(role){
-        state.selectedRoleId = role.id;
-        document.getElementById('roleEmpty').classList.add('hidden');
-        document.getElementById('rolePanel').classList.remove('hidden');
-
-        document.getElementById('roleName').textContent = role.name;
-        document.getElementById('roleDesc').textContent = role.description || '—';
-        document.getElementById('roleDiscipline').textContent = role.discipline || '—';
-        document.getElementById('roleAliases').textContent = role.aliases || '—';
-        const link = document.getElementById('roleProfileLink');
-        if (role.profile_link){ link.textContent = 'APS role profile'; link.href = role.profile_link; link.classList.remove('hidden'); } else { link.textContent = ''; link.href = '#'; link.classList.add('hidden'); }
-
-        // Skills lists with SFIA names
-        const critUL = document.getElementById('criticalList'); const desUL = document.getElementById('desirableList');
-        critUL.innerHTML = ''; desUL.innerHTML = '';
-        const renderSkill = (code) => { const meta = state.sfiaByCode.get(code); const title = meta ? `${code} — ${meta.name}` : code; const li = document.createElement('li'); li.textContent = title; return li; };
-        role.critical_skills.forEach(c => critUL.appendChild(renderSkill(c)));
-        role.desirable_skills.forEach(c => desUL.appendChild(renderSkill(c)));
-
-        // Courses mapping
-        const coursesDiv = document.getElementById('courses'); coursesDiv.innerHTML = '';
-        const iat = JSON.parse(document.getElementById('iat-courses').textContent);
-        const matched = iat.courses.filter(c => c.mapsTo.some(m => role.name.toLowerCase().includes(m.toLowerCase())));
-        (matched.length ? matched : iat.courses).forEach(c => {
-          const a = document.createElement('a'); a.href = c.link; a.target = '_blank'; a.className = 'block rounded-xl border border-slate-200 bg-slate-50 p-3 hover:bg-slate-100';
-          a.innerHTML = `<div class=\"text-sm font-medium\">${c.name}</div><div class=\"text-xs text-slate-600\">${c.provider} • ${c.delivery} • ${c.code}</div>`; coursesDiv.appendChild(a);
-        });
-
-        // Live jobs
-        const pill = document.getElementById('jobsPill'); pill.classList.add('hidden');
-        if (document.getElementById('liveJobs').checked){
-          const count = await fetchJobs(role.name);
-          if (count !== null){ document.getElementById('jobCount').textContent = count.toLocaleString(); pill.classList.remove('hidden'); }
-        }
-
-        // Update deep-link
-        const url = new URL(window.location); url.searchParams.set('role', role.id); history.replaceState(null, '', url.toString());
-      }
-
-      function applyFilters(){
-        const q = document.getElementById('searchBox').value.trim().toLowerCase();
-        const cyberOnly = document.getElementById('cyberOnly').checked;
-        const domains = [...document.querySelectorAll('.domain:checked')].map(i=>i.value);
-        const levels = new Set([...document.querySelectorAll('.level:checked')].map(i=>Number(i.value)));
-        const sfia = document.getElementById('sfiaFilter').value.trim().toUpperCase();
-        const hasIat = document.getElementById('hasIat').checked;
-
-        const iat = JSON.parse(document.getElementById('iat-courses').textContent);
-        const hasMapTo = (role) => iat.courses.some(c => c.mapsTo.some(m => role.name.toLowerCase().includes(m.toLowerCase())));
-
-        let arr = state.allRoles.slice();
-        if (cyberOnly){ arr = arr.filter(isCyberRole); }
-        if (q){ arr = arr.filter(r => (r.name||'').toLowerCase().includes(q) || (r.description||'').toLowerCase().includes(q)); }
-        arr = arr.filter(r => domains.includes(r.domain) || r.domain==='OTHER');
-        arr = arr.filter(r => levels.has(r.level));
-        if (sfia){ arr = arr.filter(r => r.critical_skills.includes(sfia) || r.desirable_skills.includes(sfia)); }
-        if (hasIat){ arr = arr.filter(r => hasMapTo(r)); }
-
-        state.roles = arr.slice(0, 160); // rich but still smooth
-        renderGraph();
-      }
-
-      async function load(){
-        document.getElementById('sourceLink').href = DIGITAL_ROLES_CSV;
-        // Load SFIA
-        const sfiaRes = await fetch(SFIA8_CSV); const sfiaText = await sfiaRes.text(); const sfia = Papa.parse(sfiaText, { header: true }).data;
-        state.sfiaByCode.clear();
-        sfia.forEach(row => { if (!row) return; const code = String((row.code||row.Code||'')).toUpperCase(); if (code){ state.sfiaByCode.set(code, { name: row.name || row.Name || row['Skill name'] || '', category: row.category || row.Category || '' }); } });
-
-        // Load roles (normalise headers defensively)
-        let rolesText = '';
-        try{ const rolesRes = await fetch(DIGITAL_ROLES_CSV); rolesText = await rolesRes.text(); } catch(e){ rolesText=''; }
-        const parsed = Papa.parse(rolesText, { header: true });
-        const rowsRaw = Array.isArray(parsed.data) ? parsed.data : [];
-        function normKey(k){ return String(k||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''); }
-        const rows = rowsRaw.map(obj => { const o={}; for (const k in obj){ if(!k) continue; o[normKey(k)] = obj[k]; } return o; });
-        state.allRoles = rows.filter(r => r && Object.keys(r).length).map(buildRoleObject).filter(r => !!r.name && r.name !== 'Unnamed role');
-
-        if (!state.allRoles.length){
-          // Fallback sample so UI remains interactive if source blocked
-          console.warn('No roles parsed from CSV; using fallback sample.');
-          state.allRoles = [
-            { id:'soc-analyst', name:'Security Operations (SOC) Analyst', description:'Monitor and triage security events.', discipline:'Cyber', aliases:'SOC Analyst', profile_link:'', critical_skills:['MONI','INAS','PEDP'], desirable_skills:['CORE','ETRC'], domain:'SOC', level:0 },
-            { id:'incident-responder', name:'Incident Responder', description:'Respond to and remediate incidents.', discipline:'Cyber', aliases:'IR', profile_link:'', critical_skills:['INAS','IRMG','BURM'], desirable_skills:['CSMG'], domain:'SOC', level:1 },
-            { id:'security-architect', name:'Security Architect', description:'Design secure systems and platforms.', discipline:'Cyber', aliases:'', profile_link:'', critical_skills:['ARCH','SCAD','CLDM'], desirable_skills:['DGFS'], domain:'ARCH', level:3 },
-            { id:'pentester', name:'Penetration Tester', description:'Assess systems via ethical hacking.', discipline:'Cyber', aliases:'Red Team', profile_link:'', critical_skills:['PENT','TEST','AURE'], desirable_skills:['INAS'], domain:'PENTEST', level:2 }
-          ];
-          toast('Loaded fallback roles (source blocked or format changed).');
-        } else {
-          toast('Loaded '+state.allRoles.length+' roles');
-        }
-
-        applyFilters();
-        // if nothing visible under current filters, relax cyberOnly and retry
-        if (!state.roles.length){ const cb = document.getElementById('cyberOnly'); cb.checked=false; applyFilters(); }
-
-        // deep link restore
-        const params = new URLSearchParams(window.location.search); const roleId = params.get('role');
-        if (roleId){ const r = state.roles.find(x => x.id === roleId) || state.allRoles.find(x => x.id === roleId); if (r){ if (!state.roles.find(x => x.id === roleId)){ state.roles = [r, ...state.roles].slice(0,160); renderGraph(); } selectRole(r); } }
-      }
-
-      function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',1600); }
-
-      // Events
-      document.getElementById('searchBox').addEventListener('input', applyFilters);
-      document.getElementById('cyberOnly').addEventListener('change', applyFilters);
-      document.querySelectorAll('.domain').forEach(el=>el.addEventListener('change', applyFilters));
-      document.querySelectorAll('.level').forEach(el=>el.addEventListener('change', applyFilters));
-      document.getElementById('sfiaFilter').addEventListener('input', applyFilters);
-      document.getElementById('hasIat').addEventListener('change', applyFilters);
-      document.getElementById('similarity').addEventListener('input', () => { document.getElementById('similarityVal').textContent = (Number(document.getElementById('similarity').value)/100).toFixed(2); renderGraph(); });
-      document.getElementById('clearBtn').addEventListener('click', () => { document.getElementById('searchBox').value = ''; applyFilters(); });
-      document.getElementById('copyLinkBtn').addEventListener('click', async () => { try { await navigator.clipboard.writeText(window.location.href); toast('Link copied'); } catch (e){} });
-      document.getElementById('pathBtn').addEventListener('click', () => { const s = document.getElementById('startRole').value; const t = document.getElementById('targetRole').value; const path = shortestPath(s, t); if (!path.length){ toast('No pathway found: lower sensitivity?'); return; } highlightPath(path); const role = state.roles.find(r => r.id === t) || state.allRoles.find(r => r.id === t); if (role) selectRole(role); });
-      document.getElementById('playBtn').addEventListener('click', async () => { const s = document.getElementById('startRole').value; const t = document.getElementById('targetRole').value; const path = shortestPath(s, t); if (!path.length){ toast('Pick start & target first'); return; } highlightPath(path); await animatePath(path); });
-      document.getElementById('resetBtn').addEventListener('click', () => { state.focusMode = false; document.getElementById('focusBtn').classList.remove('bg-indigo-50'); clearStyles(); state.cy.fit(); });
-      document.getElementById('focusBtn').addEventListener('click', () => { state.focusMode = !state.focusMode; document.getElementById('focusBtn').classList.toggle('bg-indigo-50'); if (state.focusMode && state.selectedRoleId){ focusNeighborhood(state.selectedRoleId); } else { clearStyles(); } });
-      document.getElementById('laneView').addEventListener('change', (e)=>{ state.laneView = e.target.checked; renderGraph(); });
-      document.getElementById('liveJobs').addEventListener('change', ()=>{ if (state.selectedRoleId){ const role = state.roles.find(r=>r.id===state.selectedRoleId) || state.allRoles.find(r=>r.id===state.selectedRoleId); if (role) selectRole(role); } });
-      document.getElementById('savePng').addEventListener('click', ()=>{ const png = state.cy.png({ full:true, scale:2 }); const a=document.createElement('a'); a.href=png; a.download='iat-cyber-pathways.png'; a.click(); });
-
-      // Tooltip follow
-      const tip = document.getElementById('tt');
-      function showTip(pos, text){ if(!text) return; tip.textContent = text; tip.style.left = (pos.x + 12) + 'px'; tip.style.top = (pos.y + 12) + 'px'; tip.style.display='block'; }
-      function hideTip(){ tip.style.display='none'; }
-      container.addEventListener('mousemove', (e)=>{ if(tip.style.display==='block'){ tip.style.left=(e.clientX+12)+'px'; tip.style.top=(e.clientY+12)+'px'; } }); const a=document.createElement('a'); a.href=png; a.download='iat-cyber-pathways.png'; a.click(); });
-
-      // Go!
-      load().catch(err => { console.error(err); alert('Failed to load role data. Check your network or CORS.'); });
-    </script>
-
-    <!-- Cloudflare Worker template (copy to worker.js). Set secrets ADZUNA_APP_ID and ADZUNA_APP_KEY in your Worker. -->
-    <script type="text/plain" id="worker-template">
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    if (url.pathname === "/jobs") {
-      const role = url.searchParams.get("role") || "";
-      if (!role) return new Response(JSON.stringify({ count: 0 }), { headers: { 'content-type': 'application/json' } });
-      const app_id = env.ADZUNA_APP_ID; // Add as Worker secret
-      const app_key = env.ADZUNA_APP_KEY; // Add as Worker secret
-      const api = `https://api.adzuna.com/v1/api/jobs/au/search/1?what=${encodeURIComponent(role)}&category=it-jobs&results_per_page=1&content-type=application/json&app_id=${app_id}&app_key=${app_key}`;
-      const cache = caches.default;
-      const cacheKey = new Request(request.url, request);
-      let response = await cache.match(cacheKey);
-      if (!response) {
-        const res = await fetch(api);
-        let count = 0;
-        try { const data = await res.json(); count = data.count ?? data.total ?? 0; } catch(e) {}
-        response = new Response(JSON.stringify({ count }), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' } });
-        ctx.waitUntil(cache.put(cacheKey, response.clone())); // 1 hour cache
-      }
-      return response;
-    }
-    return new Response("OK", { status: 200 });
-  }
+/**
+ * fetchABS – generic SDMX call.
+ * @param dataflow e.g. "ABS,LF,1.0" (Labour Force) or other dataset id
+ * @param key      SDMX key path, e.g. "A.AUS.M" or full dimension key
+ * @param params   { startPeriod: "2020", endPeriod: "2025" }
+ */
+async function fetchABS(dataflow: string, key: string, params: Record<string, string> = {}) {
+  const search = new URLSearchParams({ format: "sdmx-json", ...params }).toString();
+  const url = `${ABS_BASE}/data/${encodeURIComponent(dataflow)}/${key}?${search}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`ABS fetch failed (${res.status})`);
+  return res.json();
 }
-    </script>
-  </body>
-</html>
+
+/**
+ * parseSDMXSeries – flattens ABS SDMX‑JSON data message into { period, value }[]
+ * This works for single‑measure datasets. For multi‑measure, extend as needed.
+ */
+function parseSDMXSeries(msg: any): { period: string; value: number }[] {
+  if (!msg || !msg.data || !msg.data.structure || !msg.data.dataSets?.[0]) return [];
+  const { structure, dataSets } = msg.data;
+  const dataset = dataSets[0];
+  const dims = structure?.dimensions?.observation || [];
+  const timeIndex = dims.findIndex((d: any) => d.id.toLowerCase().includes("time"));
+  // Build code lists for observation dimensions
+  const dimMaps = dims.map((dim: any) => dim.values?.map((v: any) => v.name || v.id) || []);
+
+  const out: { period: string; value: number }[] = [];
+  const obs = dataset.observations || {};
+  for (const k of Object.keys(obs)) {
+    const idx = k.split(":").map((n) => parseInt(n, 10));
+    const val = Array.isArray(obs[k]) ? obs[k][0] : obs[k];
+    const period = timeIndex >= 0 ? dimMaps[timeIndex][idx[timeIndex]] : String(idx[idx.length - 1]);
+    if (val != null) out.push({ period, value: Number(val) });
+  }
+  // Sort by period (basic) – improve with a proper date parser if needed
+  return out.sort((a, b) => (a.period > b.period ? 1 : -1));
+}
+
+// —————————————————————————————————————————————
+// Demo course data (swap with live IAT Digital catalogue)
+// —————————————————————————————————————————————
+const COURSES = [
+  {
+    code: "AI‑900",
+    title: "Azure AI Fundamentals",
+    blurb: "Kickstart AI literacy with Azure AI services, responsible AI, and basic ML concepts.",
+    tag: "AI",
+    href: "#",
+  },
+  {
+    code: "DP‑900",
+    title: "Azure Data Fundamentals",
+    blurb: "Understand core data concepts, relational vs. non‑relational data, and analytics on Azure.",
+    tag: "Data",
+    href: "#",
+  },
+  {
+    code: "AZ‑900",
+    title: "Azure Fundamentals",
+    blurb: "Cloud principles, services, governance, and cost management in Azure.",
+    tag: "Cloud",
+    href: "#",
+  },
+  {
+    code: "SOC Track",
+    title: "Security Operations Foundations",
+    blurb: "Hands‑on detections, triage, and threat intel workflows for SOC readiness.",
+    tag: "Cyber",
+    href: "#",
+  },
+];
+
+// —————————————————————————————————————————————
+// Pretty number formatter
+// —————————————————————————————————————————————
+const nf = new Intl.NumberFormat("en-AU");
+
+// —————————————————————————————————————————————
+// Sections
+// —————————————————————————————————————————————
+const Hero: React.FC = () => {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
+  const y = useTransform(scrollYProgress, [0, 1], [0, -THEME.motion.parallaxStrength]);
+  const scale = useTransform(scrollYProgress, [0, 1], [1, 1.08]);
+  const spring = useSpring(scale, { stiffness: 80, damping: 20 });
+
+  return (
+    <section ref={ref} className="relative isolate overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white">
+      {/* Glow / gradient */}
+      <motion.div
+        style={{ y }}
+        className="pointer-events-none absolute -inset-16 opacity-70 [mask-image:radial-gradient(60%_50%_at_50%_40%,black,transparent)]"
+      >
+        <div className={`h-[40rem] w-[140%] -translate-x-1/5 -translate-y-20 rotate-6 bg-gradient-to-r ${THEME.brand.primary} blur-3xl`} />
+      </motion.div>
+
+      <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-28 sm:py-36 relative`}>
+        <MotionWrap>
+          <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight">
+            Upskill for in‑demand roles with <span className="text-sky-400">{THEME.brand.name}</span>
+          </h1>
+        </MotionWrap>
+        <MotionWrap delay={0.08}>
+          <p className="mt-6 max-w-2xl text-lg text-slate-200">
+            Short, industry‑backed microcredentials in AI, Data, Cloud and Cyber — delivered with
+            real Australian labour‑market insight.
+          </p>
+        </MotionWrap>
+        <MotionWrap delay={0.16}>
+          <div className="mt-10 flex flex-wrap gap-4">
+            <a href="#courses" className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-6 py-3 font-semibold text-slate-900 hover:bg-sky-400 transition">
+              Explore courses
+            </a>
+            <a href="#jobs" className="inline-flex items-center gap-2 rounded-full border border-slate-600 px-6 py-3 font-semibold hover:bg-slate-800/60 transition">
+              Job insights (ABS)
+            </a>
+          </div>
+        </MotionWrap>
+      </div>
+    </section>
+  );
+};
+
+const Courses: React.FC = () => (
+  <section id="courses" className="bg-white text-slate-900">
+    <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20`}>
+      <MotionWrap>
+        <h2 className="text-3xl sm:text-4xl font-bold">Courses</h2>
+        <p className="mt-3 text-slate-600 max-w-2xl">
+          Flexible, stackable units aligned to real job outcomes. Select a stream to view details.
+        </p>
+      </MotionWrap>
+      <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {COURSES.map((c, i) => (
+          <MotionWrap key={c.code} delay={i * THEME.motion.delay}>
+            <a href={c.href} className={`block h-full ${THEME.radius.xl} border border-slate-200 p-5 hover:shadow-lg transition bg-white`}> 
+              <div className="text-xs uppercase tracking-wider text-slate-500">{c.tag}</div>
+              <div className="mt-1 text-xl font-semibold">{c.title}</div>
+              <p className="mt-2 text-sm text-slate-600">{c.blurb}</p>
+              <div className="mt-6 inline-flex items-center gap-2 text-sky-600 font-medium">View details →</div>
+            </a>
+          </MotionWrap>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+// —————————————————————————————————————————————
+// ABS jobs insight section
+// —————————————————————————————————————————————
+const JobsInsight: React.FC = () => {
+  const [unemp, setUnemp] = useState(MOCK_UNEMPLOYMENT);
+  const [vac, setVac] = useState(MOCK_VACANCIES);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Example: swap to live once dataset and keys are chosen.
+    // See: https://www.abs.gov.au/about/data-services/application-programming-interfaces-apis/data-api-user-guide/using-api
+    //
+    // (1) UNEMPLOYMENT rate – Labour Force (dataset id varies by release)
+    // fetchABS("ABS,LF,1.0", "<DIM_KEYS_HERE>", { startPeriod: "2024-08" })
+    //   .then(parseSDMXSeries)
+    //   .then(setUnemp)
+    //   .catch((e) => setError(e.message));
+    //
+    // (2) JOB VACANCIES – Job Vacancies, Australia dataset
+    // fetchABS("ABS,JVS,1.0", "<DIM_KEYS_HERE>", { startPeriod: "2024-Q3" })
+    //   .then(parseSDMXSeries)
+    //   .then((rows) => setVac(rows.map(r => ({ period: r.period, vacancies: r.value }))))
+    //   .catch((e) => setError(e.message));
+  }, []);
+
+  const latestUnemp = unemp[unemp.length - 1]?.value ?? null;
+  const latestVac = vac[vac.length - 1]?.vacancies ?? null;
+
+  return (
+    <section id="jobs" className="bg-slate-50">
+      <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20`}>
+        <MotionWrap>
+          <h2 className="text-3xl sm:text-4xl font-bold">Australian job trends</h2>
+          <p className="mt-3 max-w-2xl text-slate-600">
+            Live indicators sourced from the Australian Bureau of Statistics (ABS). Replace the mock series with
+            the ABS Data API (SDMX‑JSON) calls in code.
+          </p>
+        </MotionWrap>
+
+        {error && (
+          <div className="mt-6 text-sm text-red-600">ABS data error: {error}</div>
+        )}
+
+        {/* Stats cards */}
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <MotionWrap>
+            <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}>
+              <div className="text-slate-500 text-sm">Unemployment rate (latest)</div>
+              <div className="mt-1 text-3xl font-bold">{latestUnemp ? `${latestUnemp.toFixed(1)}%` : "—"}</div>
+              <div className="mt-2 text-slate-500 text-xs">Source: ABS Labour Force</div>
+            </div>
+          </MotionWrap>
+
+          <MotionWrap delay={0.08}>
+            <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}>
+              <div className="text-slate-500 text-sm">Job vacancies (latest)</div>
+              <div className="mt-1 text-3xl font-bold">{latestVac ? nf.format(latestVac) : "—"}</div>
+              <div className="mt-2 text-slate-500 text-xs">Source: ABS Job Vacancies, Australia</div>
+            </div>
+          </MotionWrap>
+        </div>
+
+        {/* Charts */}
+        <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <MotionWrap>
+            <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}> 
+              <h3 className="text-lg font-semibold">Unemployment rate (trend)</h3>
+              <div className="mt-4 h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={unemp} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="period" hide={true} />
+                    <YAxis domain={[0, "dataMax + 1"]} tickFormatter={(v) => `${v}%`} />
+                    <Tooltip formatter={(v: any) => `${v}%`} />
+                    <Legend />
+                    <Line type="monotone" dataKey="value" name="Unemployment %" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">Add dataset + dimension keys in code to go live.</p>
+            </div>
+          </MotionWrap>
+
+          <MotionWrap delay={0.08}>
+            <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}> 
+              <h3 className="text-lg font-semibold">Job vacancies (quarters)</h3>
+              <div className="mt-4 h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={vac} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="period" />
+                    <YAxis tickFormatter={(v) => nf.format(Number(v))} />
+                    <Tooltip formatter={(v: any) => nf.format(Number(v))} />
+                    <Legend />
+                    <Bar dataKey="vacancies" name="Vacancies" fill="#0ea5e9" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">Source will display ABS once connected.</p>
+            </div>
+          </MotionWrap>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const ValueProps: React.FC = () => (
+  <section className="bg-white">
+    <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20`}>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {["Industry‑led", "Flexible", "Job‑aligned"].map((title, i) => (
+          <MotionWrap key={title} delay={i * THEME.motion.delay}>
+            <div className={`h-full ${THEME.radius.xl} border border-slate-200 p-6`}> 
+              <div className="text-xl font-semibold">{title}</div>
+              <p className="mt-2 text-slate-600 text-sm">
+                Practical learning with mentors and current tools. Short sprints to stack into a pathway.
+              </p>
+            </div>
+          </MotionWrap>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+const CTA: React.FC = () => (
+  <section className="relative isolate overflow-hidden bg-slate-900 text-white">
+    <div className="absolute inset-0 -z-10 opacity-80 [mask-image:radial-gradient(50%_50%_at_50%_40%,black,transparent)]">
+      <div className={`absolute -top-28 left-1/2 h-80 w-[120%] -translate-x-1/2 rotate-12 bg-gradient-to-r ${THEME.brand.primary} blur-3xl`} />
+    </div>
+    <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20 text-center`}>
+      <MotionWrap>
+        <h2 className="text-3xl sm:text-4xl font-bold">Ready to start?</h2>
+        <p className="mt-3 text-slate-200 max-w-2xl mx-auto">
+          Join the next intake and build portfolio‑ready skills in weeks, not years.
+        </p>
+      </MotionWrap>
+      <MotionWrap delay={0.08}>
+        <div className="mt-8 flex justify-center">
+          <a href="#courses" className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-8 py-3 font-semibold text-slate-900 hover:bg-sky-400 transition">
+            See intakes
+          </a>
+        </div>
+      </MotionWrap>
+    </div>
+  </section>
+);
+
+const Footer: React.FC = () => (
+  <footer className="bg-white py-12">
+    <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto grid sm:grid-cols-2 gap-6 text-sm text-slate-600`}>
+      <div>
+        <div className="font-semibold text-slate-900">{THEME.brand.name}</div>
+        <p className="mt-2">© {new Date().getFullYear()} IAT Digital. All rights reserved.</p>
+      </div>
+      <div className="sm:text-right">
+        <a href="#jobs" className="hover:underline">Data sources: ABS (API, SDMX‑JSON)</a>
+      </div>
+    </div>
+  </footer>
+);
+
+export default function IATDigitalLandingClone() {
+  return (
+    <main className="font-sans text-slate-900">
+      <Hero />
+      <ValueProps />
+      <Courses />
+      <JobsInsight />
+      <CTA />
+      <Footer />
+    </main>
+  );
+}
+
+// —————————————————————————————————————————————
+// IMPLEMENTOR NOTES
+// —————————————————————————————————————————————
+// • Matching animations exactly
+//   - Adjust THEME.motion.duration, ease, and parallaxStrength.
+//   - Tune MotionWrap delays to replicate the reference page’s stagger.
+//   - For scroll‑bound effects, increase the hero’s gradient size + transform.
+//
+// • ABS API hookup (examples you can construct after picking a dataset):
+//   - Unemployment rate (series from Labour Force, Australia):
+//     fetchABS("ABS,LF,1.0", "<MEASURE>.<REGION>.<SEX>.<FREQUENCY>", { startPeriod: "2023-01" })
+//     See: ABS Data API user guide \u2192 Using the API.
+//
+//   - Job Vacancies:
+//     fetchABS("ABS,JVS,1.0", "<INDUSTRY>.<STATE>.<FREQUENCY>", { startPeriod: "2024-Q1" })
+//
+// • OpenLearning embed tips (as per your preference):
+//   - Set iframe height to 680px (560px under 900px width, 460px under 640px) for a neat fold.
+//   - Keep external requests minimal; pre‑hydrate small JSON where possible.
+//
+// • Accessibility:
+//   - MotionWrap viewport={once:true} reduces repeated animation for keyboard users.
+//   - Ensure colour contrast meets WCAG AA when you finalise colours.
