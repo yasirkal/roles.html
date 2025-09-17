@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>IAT Digital — Cyber Pathways</title>
+    <!-- Tailwind Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root { color-scheme: light dark; }
+      html, body { height: 100%; }
+      body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
+      /* GitHub Pages iframe embed friendly fixed heights the user prefers */
+      .iframe-ideal { height: 680px; }
+      @media (max-width: 900px){ .iframe-ideal { height: 560px; } }
+      @media (max-width: 640px){ .iframe-ideal { height: 460px; } }
+    </style>
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- PapaParse for CSV -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <!-- Cytoscape for graph -->
+    <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
+  </head>
+  <body class="bg-slate-50 text-slate-900">
+    <div class="mx-auto max-w-[1200px] px-4 py-6">
+      <header class="mb-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <svg width="32" height="32" viewBox="0 0 24 24" class="text-indigo-600"><path fill="currentColor" d="M12 2L2 7l10 5l10-5zm0 7L2 4v13l10 5l10-5V4z"/></svg>
+          <div>
+            <h1 class="text-xl sm:text-2xl font-bold leading-tight">IAT Digital — Cyber Career Pathways</h1>
+            <p class="text-sm text-slate-600">Interactive pathways + live role data (APS Digital Profession) + IAT course mapping</p>
+          </div>
+        </div>
+        <a id="sourceLink" href="#" target="_blank" class="hidden sm:inline-block text-xs font-medium text-indigo-700 hover:text-indigo-900 underline">Data source</a>
+      </header>
+
+      <!-- Controls -->
+      <section class="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="md:col-span-2 flex gap-2">
+          <input id="searchBox" type="text" placeholder="Search roles… (e.g., Analyst, Architect, Penetration)" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <button id="clearBtn" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">Clear</button>
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="similarity" class="text-sm text-slate-700">Pathway sensitivity</label>
+          <input id="similarity" type="range" min="0" max="100" value="25" class="w-full" />
+          <span id="similarityVal" class="text-xs w-10 text-right">0.25</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="cyberOnly" type="checkbox" class="h-4 w-4" checked>
+          <label for="cyberOnly" class="text-sm text-slate-700">Cyber/Security roles only</label>
+        </div>
+      </section>
+
+      <!-- Main layout -->
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- Graph -->
+        <div class="lg:col-span-2 rounded-2xl bg-white p-3 shadow-sm border border-slate-200">
+          <div class="mb-2 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-slate-800">Role pathways graph</h2>
+            <div class="text-xs text-slate-500">Drag to move • Scroll to zoom • Click a node</div>
+          </div>
+          <div id="graph" class="w-full rounded-xl border border-slate-200 iframe-ideal"></div>
+        </div>
+
+        <!-- Details panel -->
+        <aside class="rounded-2xl bg-white p-4 shadow-sm border border-slate-200">
+          <div class="flex items-center justify-between">
+            <h2 class="text-base font-semibold">Role details</h2>
+            <button id="copyLinkBtn" class="text-xs text-indigo-700 underline">Copy deep-link</button>
+          </div>
+          <div id="roleEmpty" class="mt-6 text-sm text-slate-500">Select a role from the graph to see skills, description and IAT courses.</div>
+          <div id="rolePanel" class="hidden">
+            <h3 id="roleName" class="mt-1 text-lg font-bold"></h3>
+            <p id="roleDesc" class="mt-1 text-sm text-slate-700"></p>
+
+            <div class="mt-4">
+              <h4 class="text-sm font-semibold">Critical SFIA skills</h4>
+              <ul id="criticalList" class="mt-1 list-disc list-inside text-sm text-slate-800 space-y-1"></ul>
+            </div>
+            <div class="mt-3">
+              <h4 class="text-sm font-semibold">Desirable SFIA skills</h4>
+              <ul id="desirableList" class="mt-1 list-disc list-inside text-sm text-slate-800 space-y-1"></ul>
+            </div>
+
+            <div class="mt-4">
+              <h4 class="text-sm font-semibold">IAT Digital study options mapped to this role</h4>
+              <div id="courses" class="mt-2 space-y-2"></div>
+            </div>
+
+            <div class="mt-4 border-t pt-3 text-xs text-slate-500">
+              <div>Discipline: <span id="roleDiscipline"></span></div>
+              <div>Aliases: <span id="roleAliases"></span></div>
+              <a id="roleProfileLink" href="#" target="_blank" class="underline text-indigo-700"></a>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <!-- Footer / Attribution -->
+      <footer class="mt-6 text-xs text-slate-500">
+        <p>
+          Role and skills data retrieved live from the Australian Public Service Commission’s
+          <a id="apsAttribution" class="underline" target="_blank" rel="noopener" href="https://data.gov.au/data/dataset/aps-career-pathfinder">APS Career Pathfinder dataset</a>
+          (Digital Profession Roles, updated 8 Sep 2025, CC BY 2.5 AU). SFIA skill names from SFIA v8 dataset (updated 3 Sep 2025).
+        </p>
+        <p class="mt-1">Built by IAT Digital for student guidance. Pathways (edges) are computed using shared SFIA skills and are indicative only.</p>
+      </footer>
+    </div>
+
+    <!-- Inline JSON you can edit or later replace with a Google Sheet CSV -->
+    <script id="iat-courses" type="application/json">
+      {
+        "courses": [
+          {
+            "name": "Security Operations Centre (SOC) Analyst Bootcamp",
+            "provider": "IAT Digital",
+            "code": "IAT-SOC",
+            "delivery": "Blended",
+            "link": "https://study.iat.nsw.edu.au/",
+            "mapsTo": ["Cyber Security Analyst", "Security Operations", "Incident Responder", "SOC Analyst"]
+          },
+          {
+            "name": "AI-900: Microsoft Azure AI Fundamentals (Microskill Track)",
+            "provider": "IAT Digital x Microsoft",
+            "code": "AI-900",
+            "delivery": "Online",
+            "link": "https://learn.microsoft.com/en-au/certifications/exams/ai-900/",
+            "mapsTo": ["Security Engineer", "Security Architect", "Cloud Security Engineer", "Cyber Security Engineer"]
+          },
+          {
+            "name": "Cloud Skills Accelerator (Azure Foundational Security)",
+            "provider": "IAT Digital",
+            "code": "CSA-Azure-Sec",
+            "delivery": "Hybrid",
+            "link": "https://study.iat.nsw.edu.au/",
+            "mapsTo": ["Cloud Security Engineer", "Security Engineer", "DevSecOps"]
+          },
+          {
+            "name": "Data Skills Accelerator (Python for Security Analytics)",
+            "provider": "IAT Digital",
+            "code": "DSA-PySec",
+            "delivery": "Hybrid",
+            "link": "https://study.iat.nsw.edu.au/",
+            "mapsTo": ["Threat Intelligence", "Security Analyst", "Incident Responder"]
+          }
+        ]
+      }
+    </script>
+
+    <script>
+      // --------- Config: live open data endpoints (CSV) ---------
+      const DIGITAL_ROLES_CSV = "https://data.gov.au/data/dataset/1875234c-bf08-4c5e-ab0c-74634957f1bf/resource/8e5e7641-589c-4376-8b53-9f2fb1561fe7/download/typical-aps-roles-master-sfia9-rolesexport-digital-prof-11.csv"; // Updated 8 Sep 2025
+      const SFIA8_CSV = "https://data.gov.au/data/dataset/1875234c-bf08-4c5e-ab0c-74634957f1bf/resource/043ae065-7167-44c5-a6da-b33efe05f4ec/download/sfia-skills-8.csv"; // Updated 3 Sep 2025
+
+      const state = {
+        roles: [], // filtered roles
+        allRoles: [], // full downloaded roles
+        sfiaByCode: new Map(),
+        cy: null,
+        selectedRoleId: null
+      };
+
+      // Utility to normalise lists split by semicolons or commas
+      function splitList(val) {
+        if (!val) return [];
+        return String(val)
+          .split(/[;,]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      function asCode(s){
+        // SFIA codes usually 3-4 letters; keep as-is; also return uppercase
+        return s ? s.toUpperCase() : s;
+      }
+
+      function isCyberRole(role){
+        const name = (role.name || '').toLowerCase();
+        const disc = (role.discipline || '').toLowerCase();
+        return (
+          disc.includes('cyber') ||
+          disc.includes('security') ||
+          name.includes('security') ||
+          name.includes('cyber') ||
+          name.includes('pen test') || name.includes('penetration') ||
+          name.includes('threat') || name.includes('incident') ||
+          name.includes('governance, risk') || name.includes('grc')
+        );
+      }
+
+      function buildRoleObject(row){
+        const crit = splitList(row.critical_skills).map(asCode);
+        const des = splitList(row.desirable_skills).map(asCode);
+        return {
+          id: row.id || row.name,
+          name: row.name,
+          description: row.description || '',
+          discipline: row.discipline || '',
+          aliases: splitList(row.alias).join(', '),
+          profile_link: row.profile_link || '',
+          critical_skills: crit,
+          desirable_skills: des
+        };
+      }
+
+      function jaccard(a,b){
+        const A = new Set(a), B = new Set(b);
+        const inter = [...A].filter(x => B.has(x)).length;
+        const uni = new Set([...a, ...b]).size;
+        return uni === 0 ? 0 : inter / uni;
+      }
+
+      function computeEdges(roles, threshold){
+        const edges = [];
+        for (let i=0;i<roles.length;i++){
+          for (let j=i+1;j<roles.length;j++){
+            const s = jaccard(roles[i].critical_skills, roles[j].critical_skills);
+            if (s >= threshold){
+              edges.push({ source: roles[i].id, target: roles[j].id, weight: s });
+            }
+          }
+        }
+        return edges;
+      }
+
+      function renderGraph(){
+        const container = document.getElementById('graph');
+        const threshold = Number(document.getElementById('similarity').value) / 100;
+        document.getElementById('similarityVal').textContent = threshold.toFixed(2);
+
+        const nodes = state.roles.map(r => ({ data: { id: r.id, label: r.name } }));
+        const edges = computeEdges(state.roles, threshold).map(e => ({ data: e }));
+
+        if (state.cy){ state.cy.destroy(); }
+        state.cy = cytoscape({
+          container,
+          elements: { nodes, edges },
+          style: [
+            { selector: 'node', style: {
+              'background-color': '#6366f1',
+              'label': 'data(label)',
+              'color': '#0f172a',
+              'font-size': 10,
+              'text-wrap': 'wrap',
+              'text-max-width': 120,
+              'text-valign': 'center',
+              'text-halign': 'center',
+              'width': 16,
+              'height': 16,
+              'border-width': 2,
+              'border-color': '#c7d2fe'
+            }},
+            { selector: 'edge', style: {
+              'width': 'mapData(weight, 0, 1, 1, 6)',
+              'line-color': '#94a3b8',
+              'curve-style': 'haystack',
+              'haystack-radius': 0.3,
+              'opacity': 0.7
+            }},
+            { selector: 'node:selected', style: {
+              'background-color': '#22c55e',
+              'border-color': '#bbf7d0'
+            }}
+          ],
+          layout: {
+            name: 'cose',
+            animate: false,
+            nodeRepulsion: 6000,
+            idealEdgeLength: 160,
+            edgeElasticity: 0.4
+          }
+        });
+
+        state.cy.on('tap', 'node', (evt) => {
+          const id = evt.target.id();
+          const role = state.roles.find(r => r.id === id);
+          if (role) selectRole(role);
+        });
+      }
+
+      function selectRole(role){
+        state.selectedRoleId = role.id;
+        document.getElementById('roleEmpty').classList.add('hidden');
+        document.getElementById('rolePanel').classList.remove('hidden');
+
+        document.getElementById('roleName').textContent = role.name;
+        document.getElementById('roleDesc').textContent = role.description || '—';
+        document.getElementById('roleDiscipline').textContent = role.discipline || '—';
+        document.getElementById('roleAliases').textContent = role.aliases || '—';
+        const link = document.getElementById('roleProfileLink');
+        if (role.profile_link){
+          link.textContent = 'APS role profile';
+          link.href = role.profile_link;
+          link.classList.remove('hidden');
+        } else {
+          link.textContent = '';
+          link.href = '#';
+          link.classList.add('hidden');
+        }
+
+        // Skills lists with SFIA names when available
+        const critUL = document.getElementById('criticalList');
+        const desUL = document.getElementById('desirableList');
+        critUL.innerHTML = '';
+        desUL.innerHTML = '';
+        const renderSkill = (code) => {
+          const meta = state.sfiaByCode.get(code);
+          const title = meta ? `${code} — ${meta.name}` : code;
+          const li = document.createElement('li');
+          li.textContent = title;
+          return li;
+        };
+        role.critical_skills.forEach(c => critUL.appendChild(renderSkill(c)));
+        role.desirable_skills.forEach(c => desUL.appendChild(renderSkill(c)));
+
+        // Courses mapping
+        const coursesDiv = document.getElementById('courses');
+        coursesDiv.innerHTML = '';
+        const iat = JSON.parse(document.getElementById('iat-courses').textContent);
+        const matched = iat.courses.filter(c => c.mapsTo.some(m => role.name.toLowerCase().includes(m.toLowerCase())));
+        (matched.length ? matched : iat.courses).forEach(c => {
+          const a = document.createElement('a');
+          a.href = c.link; a.target = '_blank';
+          a.className = 'block rounded-xl border border-slate-200 bg-slate-50 p-3 hover:bg-slate-100';
+          a.innerHTML = `<div class="text-sm font-medium">${c.name}</div>
+            <div class="text-xs text-slate-600">${c.provider} • ${c.delivery} • ${c.code}</div>`;
+          coursesDiv.appendChild(a);
+        });
+
+        // Update deep-link
+        const url = new URL(window.location);
+        url.searchParams.set('role', role.id);
+        history.replaceState(null, '', url.toString());
+      }
+
+      function applyFilters(){
+        const q = document.getElementById('searchBox').value.trim().toLowerCase();
+        const cyberOnly = document.getElementById('cyberOnly').checked;
+        let arr = state.allRoles.slice();
+        if (cyberOnly){ arr = arr.filter(isCyberRole); }
+        if (q){
+          arr = arr.filter(r => (r.name||'').toLowerCase().includes(q) || (r.description||'').toLowerCase().includes(q));
+        }
+        // Keep it performant
+        state.roles = arr.slice(0, 60);
+        renderGraph();
+      }
+
+      async function load(){
+        // Set source link
+        document.getElementById('sourceLink').href = DIGITAL_ROLES_CSV;
+
+        // Load SFIA
+        const sfiaRes = await fetch(SFIA8_CSV);
+        const sfiaText = await sfiaRes.text();
+        const sfia = Papa.parse(sfiaText, { header: true }).data;
+        sfia.forEach(row => {
+          if (row.code){
+            state.sfiaByCode.set(String(row.code).toUpperCase(), { name: row.name, category: row.category });
+          }
+        });
+
+        // Load roles
+        const rolesRes = await fetch(DIGITAL_ROLES_CSV);
+        const rolesText = await rolesRes.text();
+        const rows = Papa.parse(rolesText, { header: true }).data;
+        state.allRoles = rows
+          .filter(r => r && r.name)
+          .map(buildRoleObject);
+
+        applyFilters();
+
+        // Restore deep link
+        const params = new URLSearchParams(window.location.search);
+        const roleId = params.get('role');
+        if (roleId){
+          const r = state.roles.find(x => x.id === roleId) || state.allRoles.find(x => x.id === roleId);
+          if (r){
+            if (!state.roles.find(x => x.id === roleId)){
+              state.roles = [r, ...state.roles].slice(0,60);
+              renderGraph();
+            }
+            selectRole(r);
+          }
+        }
+      }
+
+      // Events
+      document.getElementById('searchBox').addEventListener('input', applyFilters);
+      document.getElementById('cyberOnly').addEventListener('change', applyFilters);
+      document.getElementById('similarity').addEventListener('input', () => {
+        document.getElementById('similarityVal').textContent = (Number(document.getElementById('similarity').value)/100).toFixed(2);
+        renderGraph();
+      });
+      document.getElementById('clearBtn').addEventListener('click', () => {
+        document.getElementById('searchBox').value = '';
+        applyFilters();
+      });
+      document.getElementById('copyLinkBtn').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+          alert('Link copied');
+        } catch (e){ /* ignore */ }
+      });
+
+      // Go!
+      load().catch(err => {
+        console.error(err);
+        alert('Failed to load role data. Check your network or CORS.');
+      });
+    </script>
+  </body>
+</html>
