@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>IAT Digital — Cyber Pathways</title>
+    <title>IAT Digital — Cyber Pathways (v2)</title>
     <!-- Tailwind Play CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,10 +13,22 @@
       :root { color-scheme: light dark; }
       html, body { height: 100%; }
       body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; }
-      /* GitHub Pages iframe embed friendly fixed heights the user prefers */
+      /* Preferred iframe heights for OL embed */
       .iframe-ideal { height: 680px; }
       @media (max-width: 900px){ .iframe-ideal { height: 560px; } }
       @media (max-width: 640px){ .iframe-ideal { height: 460px; } }
+
+      /* Lane backgrounds */
+      .lanes { position: relative; }
+      .lane-bg { position:absolute; left:0; right:0; height:20%; opacity:0.06; }
+      .lane-bg:nth-child(1){ top:0; background:#4f46e5; }
+      .lane-bg:nth-child(2){ top:20%; background:#0ea5e9; }
+      .lane-bg:nth-child(3){ top:40%; background:#10b981; }
+      .lane-bg:nth-child(4){ top:60%; background:#f59e0b; }
+      .lane-bg:nth-child(5){ top:80%; background:#ef4444; }
+
+      /* Simple toast */
+      #toast { position:fixed; bottom:16px; right:16px; background:#111827; color:white; padding:8px 12px; border-radius:10px; font-size:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); display:none; z-index:99; }
     </style>
     <!-- Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -26,32 +38,89 @@
     <script src="https://unpkg.com/cytoscape@3.26.0/dist/cytoscape.min.js"></script>
   </head>
   <body class="bg-slate-50 text-slate-900">
+    <div id="toast"></div>
     <div class="mx-auto max-w-[1200px] px-4 py-6">
       <header class="mb-4 flex items-center justify-between gap-3">
         <div class="flex items-center gap-3">
           <svg width="32" height="32" viewBox="0 0 24 24" class="text-indigo-600"><path fill="currentColor" d="M12 2L2 7l10 5l10-5zm0 7L2 4v13l10 5l10-5V4z"/></svg>
           <div>
             <h1 class="text-xl sm:text-2xl font-bold leading-tight">IAT Digital — Cyber Career Pathways</h1>
-            <p class="text-sm text-slate-600">Interactive pathways + live role data (APS Digital Profession) + IAT course mapping</p>
+            <p class="text-sm text-slate-600">Interactive pathways + live data + IAT course mapping (v2)</p>
           </div>
         </div>
-        <a id="sourceLink" href="#" target="_blank" class="hidden sm:inline-block text-xs font-medium text-indigo-700 hover:text-indigo-900 underline">Data source</a>
+        <div class="flex items-center gap-3 text-xs">
+          <a id="sourceLink" href="#" target="_blank" class="text-indigo-700 hover:text-indigo-900 underline">Data source</a>
+          <button id="savePng" class="rounded-lg border border-slate-300 bg-white px-2 py-1">Save PNG</button>
+        </div>
       </header>
 
       <!-- Controls -->
-      <section class="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div class="md:col-span-2 flex gap-2">
-          <input id="searchBox" type="text" placeholder="Search roles… (e.g., Analyst, Architect, Penetration)" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          <button id="clearBtn" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">Clear</button>
+      <section class="mb-4 grid grid-cols-1 gap-3">
+        <!-- Row 1: Search & knobs -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div class="md:col-span-2 flex gap-2">
+            <input id="searchBox" type="text" placeholder="Search roles… (e.g., Analyst, Architect, Penetration)" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <button id="clearBtn" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">Clear</button>
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="similarity" class="text-sm text-slate-700">Pathway sensitivity</label>
+            <input id="similarity" type="range" min="0" max="100" value="30" class="w-full" />
+            <span id="similarityVal" class="text-xs w-10 text-right">0.30</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="cyberOnly" type="checkbox" class="h-4 w-4" checked>
+            <label for="cyberOnly" class="text-sm text-slate-700">Cyber/Security roles only</label>
+          </div>
         </div>
-        <div class="flex items-center gap-2">
-          <label for="similarity" class="text-sm text-slate-700">Pathway sensitivity</label>
-          <input id="similarity" type="range" min="0" max="100" value="25" class="w-full" />
-          <span id="similarityVal" class="text-xs w-10 text-right">0.25</span>
+
+        <!-- Row 2: Path planner -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-2">
+          <select id="startRole" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">
+            <option value="">Start role…</option>
+          </select>
+          <select id="targetRole" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">
+            <option value="">Target role…</option>
+          </select>
+          <button id="pathBtn" class="rounded-xl bg-indigo-600 text-white px-3 py-2 text-sm shadow-sm hover:bg-indigo-700">Show pathway</button>
+          <button id="focusBtn" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">Focus mode</button>
+          <button id="resetBtn" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm">Reset</button>
         </div>
-        <div class="flex items-center gap-2">
-          <input id="cyberOnly" type="checkbox" class="h-4 w-4" checked>
-          <label for="cyberOnly" class="text-sm text-slate-700">Cyber/Security roles only</label>
+
+        <!-- Row 3: Advanced filters -->
+        <div class="rounded-2xl border border-slate-200 bg-white p-3 grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div>
+            <div class="text-xs font-semibold mb-1">Domain</div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="SOC" checked> SOC/IR</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="GRC" checked> GRC</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="ARCH" checked> Architecture</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="PENTEST" checked> Pentest</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="CLOUD" checked> Cloud</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="APPSEC" checked> AppSec</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="THREAT" checked> Threat Intel</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="domain" value="IAM" checked> IAM</label>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs font-semibold mb-1">Seniority</div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="level" value="0" checked> Entry</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="level" value="1" checked> Associate</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="level" value="2" checked> Senior</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="level" value="3" checked> Lead/Principal</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" class="level" value="4" checked> Manager/Exec</label>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs font-semibold mb-1">Filter by SFIA code</div>
+            <input id="sfiaFilter" type="text" placeholder="e.g., BURM, INAS, PENT" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs shadow-sm" />
+            <div class="mt-2 text-[11px] text-slate-500">Matches Critical/Desirable skills</div>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="inline-flex items-center gap-2 text-sm"><input id="hasIat" type="checkbox" class="h-4 w-4"> Only roles with IAT mapping</label>
+            <label class="inline-flex items-center gap-2 text-sm"><input id="laneView" type="checkbox" class="h-4 w-4"> Lane view</label>
+            <label class="inline-flex items-center gap-2 text-sm"><input id="liveJobs" type="checkbox" class="h-4 w-4"> Live job counts</label>
+          </div>
         </div>
       </section>
 
@@ -63,7 +132,11 @@
             <h2 class="text-sm font-semibold text-slate-800">Role pathways graph</h2>
             <div class="text-xs text-slate-500">Drag to move • Scroll to zoom • Click a node</div>
           </div>
-          <div id="graph" class="w-full rounded-xl border border-slate-200 iframe-ideal"></div>
+          <div class="lanes w-full rounded-xl border border-slate-200 iframe-ideal relative">
+            <div class="lane-bg"></div><div class="lane-bg"></div><div class="lane-bg"></div><div class="lane-bg"></div><div class="lane-bg"></div>
+            <div id="graph" class="absolute inset-0"></div>
+          </div>
+          <div class="mt-2 text-[11px] text-slate-500">Legend: arrow shows suggested direction of progression; thicker lines = stronger skill overlap; dashed motion indicates pathway flow.</div>
         </div>
 
         <!-- Details panel -->
@@ -72,10 +145,12 @@
             <h2 class="text-base font-semibold">Role details</h2>
             <button id="copyLinkBtn" class="text-xs text-indigo-700 underline">Copy deep-link</button>
           </div>
-          <div id="roleEmpty" class="mt-6 text-sm text-slate-500">Select a role from the graph to see skills, description and IAT courses.</div>
+          <div id="roleEmpty" class="mt-6 text-sm text-slate-500">Select a role from the graph to see skills, description, IAT mapping and live job openings.</div>
           <div id="rolePanel" class="hidden">
             <h3 id="roleName" class="mt-1 text-lg font-bold"></h3>
             <p id="roleDesc" class="mt-1 text-sm text-slate-700"></p>
+
+            <div id="jobsPill" class="mt-2 hidden text-xs inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 px-2 py-1 border border-emerald-200">Jobs: <span id="jobCount">—</span></div>
 
             <div class="mt-4">
               <h4 class="text-sm font-semibold">Critical SFIA skills</h4>
@@ -102,12 +177,7 @@
 
       <!-- Footer / Attribution -->
       <footer class="mt-6 text-xs text-slate-500">
-        <p>
-          Role and skills data retrieved live from the Australian Public Service Commission’s
-          <a id="apsAttribution" class="underline" target="_blank" rel="noopener" href="https://data.gov.au/data/dataset/aps-career-pathfinder">APS Career Pathfinder dataset</a>
-          (Digital Profession Roles, updated 8 Sep 2025, CC BY 2.5 AU). SFIA skill names from SFIA v8 dataset (updated 3 Sep 2025).
-        </p>
-        <p class="mt-1">Built by IAT Digital for student guidance. Pathways (edges) are computed using shared SFIA skills and are indicative only.</p>
+        <p>Role and skills data retrieved from the Australian Public Service Commission’s open <span class="font-medium">APS Career Pathfinder</span> dataset (Digital Profession Roles, SFIA-aligned). SFIA skill names from SFIA v8 dataset. Job counts via optional Cloudflare Worker proxy to Adzuna API. All non‑IAT data remains subject to its original licence.</p>
       </footer>
     </div>
 
@@ -115,77 +185,64 @@
     <script id="iat-courses" type="application/json">
       {
         "courses": [
-          {
-            "name": "Security Operations Centre (SOC) Analyst Bootcamp",
-            "provider": "IAT Digital",
-            "code": "IAT-SOC",
-            "delivery": "Blended",
-            "link": "https://study.iat.nsw.edu.au/",
-            "mapsTo": ["Cyber Security Analyst", "Security Operations", "Incident Responder", "SOC Analyst"]
-          },
-          {
-            "name": "AI-900: Microsoft Azure AI Fundamentals (Microskill Track)",
-            "provider": "IAT Digital x Microsoft",
-            "code": "AI-900",
-            "delivery": "Online",
-            "link": "https://learn.microsoft.com/en-au/certifications/exams/ai-900/",
-            "mapsTo": ["Security Engineer", "Security Architect", "Cloud Security Engineer", "Cyber Security Engineer"]
-          },
-          {
-            "name": "Cloud Skills Accelerator (Azure Foundational Security)",
-            "provider": "IAT Digital",
-            "code": "CSA-Azure-Sec",
-            "delivery": "Hybrid",
-            "link": "https://study.iat.nsw.edu.au/",
-            "mapsTo": ["Cloud Security Engineer", "Security Engineer", "DevSecOps"]
-          },
-          {
-            "name": "Data Skills Accelerator (Python for Security Analytics)",
-            "provider": "IAT Digital",
-            "code": "DSA-PySec",
-            "delivery": "Hybrid",
-            "link": "https://study.iat.nsw.edu.au/",
-            "mapsTo": ["Threat Intelligence", "Security Analyst", "Incident Responder"]
-          }
+          {"name":"Security Operations Centre (SOC) Analyst Bootcamp","provider":"IAT Digital","code":"IAT-SOC","delivery":"Blended","link":"https://study.iat.nsw.edu.au/","mapsTo":["Security Operations","SOC Analyst","Incident Responder","Security Analyst"]},
+          {"name":"AI-900: Microsoft Azure AI Fundamentals (Microskill Track)","provider":"IAT Digital × Microsoft","code":"AI-900","delivery":"Online","link":"https://learn.microsoft.com/en-au/certifications/exams/ai-900/","mapsTo":["Security Engineer","Security Architect","Cloud Security Engineer"]},
+          {"name":"Cloud Skills Accelerator (Azure Foundational Security)","provider":"IAT Digital","code":"CSA-Azure-Sec","delivery":"Hybrid","link":"https://study.iat.nsw.edu.au/","mapsTo":["Cloud Security Engineer","Security Engineer","DevSecOps"]},
+          {"name":"Data Skills Accelerator (Python for Security Analytics)","provider":"IAT Digital","code":"DSA-PySec","delivery":"Hybrid","link":"https://study.iat.nsw.edu.au/","mapsTo":["Threat Intelligence","Security Analyst","Incident Responder"]}
         ]
       }
     </script>
 
     <script>
-      // --------- Config: live open data endpoints (CSV) ---------
-      const DIGITAL_ROLES_CSV = "https://data.gov.au/data/dataset/1875234c-bf08-4c5e-ab0c-74634957f1bf/resource/8e5e7641-589c-4376-8b53-9f2fb1561fe7/download/typical-aps-roles-master-sfia9-rolesexport-digital-prof-11.csv"; // Updated 8 Sep 2025
-      const SFIA8_CSV = "https://data.gov.au/data/dataset/1875234c-bf08-4c5e-ab0c-74634957f1bf/resource/043ae065-7167-44c5-a6da-b33efe05f4ec/download/sfia-skills-8.csv"; // Updated 3 Sep 2025
+      // --------- Config: live open data + optional jobs proxy ---------
+      const DIGITAL_ROLES_CSV = "https://data.gov.au/data/dataset/1875234c-bf08-4c5e-ab0c-74634957f1bf/resource/8e5e7641-589c-4376-8b53-9f2fb1561fe7/download/typical-aps-roles-master-sfia9-rolesexport-digital-prof-11.csv"; // keep updated when dataset changes
+      const SFIA8_CSV = "https://data.gov.au/data/dataset/1875234c-bf08-4c5e-ab0c-74634957f1bf/resource/043ae065-7167-44c5-a6da-b33efe05f4ec/download/sfia-skills-8.csv";
+      // Optional: set to your Cloudflare Worker endpoint, e.g., 'https://iat-cyber-jobs.yourname.workers.dev/jobs?role='
+      const JOB_API = '';
 
       const state = {
         roles: [], // filtered roles
         allRoles: [], // full downloaded roles
         sfiaByCode: new Map(),
         cy: null,
-        selectedRoleId: null
+        selectedRoleId: null,
+        focusMode: false,
+        lastPath: [],
+        laneView: false
       };
 
       // Utility to normalise lists split by semicolons or commas
-      function splitList(val) {
-        if (!val) return [];
-        return String(val)
-          .split(/[;,]/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-      }
+      function splitList(val) { if (!val) return []; return String(val).split(/[;,]/).map((s) => s.trim()).filter(Boolean); }
+      function asCode(s){ return s ? s.toUpperCase() : s; }
 
-      function asCode(s){
-        // SFIA codes usually 3-4 letters; keep as-is; also return uppercase
-        return s ? s.toUpperCase() : s;
+      // Heuristics for domain & level (seniority)
+      function detectDomain(name){
+        const s = name.toLowerCase();
+        if (/(soc|operations|incident|responder)/.test(s)) return 'SOC';
+        if (/(grc|governance|risk|compliance|assurance)/.test(s)) return 'GRC';
+        if (/(architect)/.test(s)) return 'ARCH';
+        if (/(pen.?test|red team|ethical hacker)/.test(s)) return 'PENTEST';
+        if (/(cloud|azure|aws|gcp)/.test(s)) return 'CLOUD';
+        if (/(appsec|application security|secure coding|devsecops)/.test(s)) return 'APPSEC';
+        if (/(threat|intelligence)/.test(s)) return 'THREAT';
+        if (/(iam|identity|access)/.test(s)) return 'IAM';
+        return 'OTHER';
+      }
+      function detectLevel(name){
+        const s = name.toLowerCase();
+        if (/^(head|chief|director|manager|executive)/.test(s)) return 4; // Manager/Exec
+        if (/(principal|lead)/.test(s)) return 3; // Lead/Principal
+        if (/(senior)/.test(s)) return 2; // Senior
+        if (/(associate|junior|assistant|graduate)/.test(s)) return 1; // Associate/Junior
+        return 0; // Entry/Analyst
       }
 
       function isCyberRole(role){
         const name = (role.name || '').toLowerCase();
         const disc = (role.discipline || '').toLowerCase();
         return (
-          disc.includes('cyber') ||
-          disc.includes('security') ||
-          name.includes('security') ||
-          name.includes('cyber') ||
+          disc.includes('cyber') || disc.includes('security') ||
+          name.includes('security') || name.includes('cyber') ||
           name.includes('pen test') || name.includes('penetration') ||
           name.includes('threat') || name.includes('incident') ||
           name.includes('governance, risk') || name.includes('grc')
@@ -195,36 +252,79 @@
       function buildRoleObject(row){
         const crit = splitList(row.critical_skills).map(asCode);
         const des = splitList(row.desirable_skills).map(asCode);
+        const name = row.name || '';
         return {
           id: row.id || row.name,
-          name: row.name,
+          name,
           description: row.description || '',
           discipline: row.discipline || '',
           aliases: splitList(row.alias).join(', '),
           profile_link: row.profile_link || '',
           critical_skills: crit,
-          desirable_skills: des
+          desirable_skills: des,
+          domain: detectDomain(name),
+          level: detectLevel(name)
         };
       }
 
-      function jaccard(a,b){
-        const A = new Set(a), B = new Set(b);
-        const inter = [...A].filter(x => B.has(x)).length;
-        const uni = new Set([...a, ...b]).size;
-        return uni === 0 ? 0 : inter / uni;
-      }
+      function jaccard(a,b){ const A = new Set(a), B = new Set(b); const inter = [...A].filter(x => B.has(x)).length; const uni = new Set([...a, ...b]).size; return uni === 0 ? 0 : inter / uni; }
 
       function computeEdges(roles, threshold){
         const edges = [];
         for (let i=0;i<roles.length;i++){
           for (let j=i+1;j<roles.length;j++){
             const s = jaccard(roles[i].critical_skills, roles[j].critical_skills);
-            if (s >= threshold){
-              edges.push({ source: roles[i].id, target: roles[j].id, weight: s });
-            }
+            if (s >= threshold){ edges.push({ source: roles[i].id, target: roles[j].id, weight: s }); }
           }
         }
         return edges;
+      }
+
+      function populateRoleSelects(){
+        const startSel = document.getElementById('startRole');
+        const targetSel = document.getElementById('targetRole');
+        const opts = state.roles.length ? state.roles : state.allRoles;
+        const make = r => `<option value="${r.id}">${r.name}</option>`;
+        startSel.innerHTML = ['<option value="">Start role…</option>'].concat(opts.map(make)).join('');
+        targetSel.innerHTML = ['<option value="">Target role…</option>'].concat(opts.map(make)).join('');
+      }
+
+      function nodeStyle(){
+        return [
+          { selector: 'node', style: {
+            'background-color': '#6366f1', 'label': 'data(label)', 'color': '#0f172a', 'font-size': 10,
+            'text-wrap': 'wrap', 'text-max-width': 120, 'text-valign': 'center', 'text-halign': 'center',
+            'width': 16,'height': 16,'border-width': 2,'border-color': '#c7d2fe'
+          }},
+          { selector: 'edge', style: {
+            'width': 'mapData(weight, 0, 1, 1, 6)', 'line-color': '#94a3b8', 'curve-style': 'straight',
+            'line-style': 'dashed', 'line-dash-pattern': [6,4], 'target-arrow-shape': 'triangle', 'target-arrow-color': '#94a3b8', 'opacity': 0.8
+          }},
+          { selector: 'node:selected', style: { 'background-color': '#22c55e','border-color': '#bbf7d0' }},
+          { selector: '.faded', style: { 'opacity': 0.12 } },
+          { selector: '.highlighted', style: { 'background-color': '#ef4444','border-color': '#fecaca','opacity': 1 } },
+          { selector: '.path', style: { 'background-color': '#10b981', 'line-color': '#10b981', 'target-arrow-color': '#10b981', 'width': 'mapData(weight, 0, 1, 2, 8)' }}
+        ];
+      }
+
+      function laneLayoutPositions(roles){
+        // preset positions by level (0..4) across Y; X distributed
+        const width = document.getElementById('graph').clientWidth;
+        const height = document.getElementById('graph').clientHeight;
+        const cols = 4; // spread in each lane
+        const positions = {};
+        const buckets = [[],[],[],[],[]];
+        roles.forEach(r => buckets[r.level].push(r));
+        buckets.forEach((arr, li) => {
+          const laneTop = (height * (li*0.2)) + 40;
+          const laneBottom = Math.min(height * ((li+1)*0.2) - 40, height-40);
+          arr.forEach((r, idx) => {
+            const x = 80 + (idx % cols) * ((width-160)/Math.max(cols-1,1));
+            const y = laneTop + Math.floor(idx/cols) * 40;
+            positions[r.id] = { x, y: Math.min(y, laneBottom) };
+          });
+        });
+        return positions;
       }
 
       function renderGraph(){
@@ -232,57 +332,68 @@
         const threshold = Number(document.getElementById('similarity').value) / 100;
         document.getElementById('similarityVal').textContent = threshold.toFixed(2);
 
-        const nodes = state.roles.map(r => ({ data: { id: r.id, label: r.name } }));
+        const nodes = state.roles.map(r => ({ data: { id: r.id, label: r.name, level: r.level, domain: r.domain } }));
         const edges = computeEdges(state.roles, threshold).map(e => ({ data: e }));
 
         if (state.cy){ state.cy.destroy(); }
-        state.cy = cytoscape({
-          container,
-          elements: { nodes, edges },
-          style: [
-            { selector: 'node', style: {
-              'background-color': '#6366f1',
-              'label': 'data(label)',
-              'color': '#0f172a',
-              'font-size': 10,
-              'text-wrap': 'wrap',
-              'text-max-width': 120,
-              'text-valign': 'center',
-              'text-halign': 'center',
-              'width': 16,
-              'height': 16,
-              'border-width': 2,
-              'border-color': '#c7d2fe'
-            }},
-            { selector: 'edge', style: {
-              'width': 'mapData(weight, 0, 1, 1, 6)',
-              'line-color': '#94a3b8',
-              'curve-style': 'haystack',
-              'haystack-radius': 0.3,
-              'opacity': 0.7
-            }},
-            { selector: 'node:selected', style: {
-              'background-color': '#22c55e',
-              'border-color': '#bbf7d0'
-            }}
-          ],
-          layout: {
-            name: 'cose',
-            animate: false,
-            nodeRepulsion: 6000,
-            idealEdgeLength: 160,
-            edgeElasticity: 0.4
-          }
-        });
+        state.cy = cytoscape({ container, elements: { nodes, edges }, style: nodeStyle(), layout: { name: state.laneView ? 'preset' : 'cose', animate: false } });
 
+        if (state.laneView){
+          const pos = laneLayoutPositions(state.roles);
+          state.cy.nodes().forEach(n => { const p = pos[n.id()]; if (p) n.position(p); });
+          state.cy.fit();
+        }
+
+        // Edge dash animation
+        let dash = 0; function tick(){ dash = (dash + 1) % 10; state.cy.style().selector('edge').style('line-dash-offset', dash).update(); requestAnimationFrame(tick); } requestAnimationFrame(tick);
+
+        // Interactions
         state.cy.on('tap', 'node', (evt) => {
           const id = evt.target.id();
           const role = state.roles.find(r => r.id === id);
           if (role) selectRole(role);
+          if (state.focusMode) focusNeighborhood(id);
         });
+        state.cy.on('mouseover', 'node', (evt) => { evt.target.addClass('highlighted'); });
+        state.cy.on('mouseout', 'node', (evt) => { evt.target.removeClass('highlighted'); });
+
+        populateRoleSelects();
       }
 
-      function selectRole(role){
+      function clearStyles(){ state.cy.elements().removeClass('faded path highlighted'); }
+      function focusNeighborhood(nodeId){ clearStyles(); const n = state.cy.getElementById(nodeId); const nb = n.closedNeighborhood(); state.cy.elements().not(nb).addClass('faded'); nb.removeClass('faded'); }
+
+      function shortestPath(startId, targetId){
+        if (!startId || !targetId || startId === targetId) return [];
+        const threshold = Number(document.getElementById('similarity').value) / 100;
+        const edges = computeEdges(state.roles, threshold);
+        const adj = new Map(); function add(u,v){ if(!adj.has(u)) adj.set(u,[]); adj.get(u).push(v); }
+        edges.forEach(e => { add(e.source, e.target); add(e.target, e.source); });
+        const q=[startId]; const prev=new Map([[startId,null]]);
+        while(q.length){ const u=q.shift(); if(u===targetId) break; (adj.get(u)||[]).forEach(v=>{ if(!prev.has(v)){ prev.set(v,u); q.push(v);} }); }
+        if(!prev.has(targetId)) return [];
+        const path=[]; let cur=targetId; while(cur){ path.push(cur); cur=prev.get(cur); } return path.reverse();
+      }
+
+      function highlightPath(path){
+        clearStyles(); if (!path.length) return; const ids = new Set(path);
+        state.cy.nodes().forEach(n=>{ if(!ids.has(n.id())) n.addClass('faded'); else n.addClass('path'); });
+        for(let i=0;i<path.length-1;i++){
+          const a=path[i], b=path[i+1];
+          state.cy.edges().forEach(e=>{ const s=e.data('source'), t=e.data('target'); if((s===a && t===b) || (s===b && t===a)) e.addClass('path'); });
+        }
+        state.lastPath = path.slice();
+      }
+
+      async function fetchJobs(roleName){
+        if (!JOB_API) return null;
+        try {
+          const res = await fetch(JOB_API + encodeURIComponent(roleName));
+          if (!res.ok) return null; const data = await res.json(); return data.count ?? data.total ?? null;
+        } catch(e){ return null; }
+      }
+
+      async function selectRole(role){
         state.selectedRoleId = role.id;
         document.getElementById('roleEmpty').classList.add('hidden');
         document.getElementById('rolePanel').classList.remove('hidden');
@@ -292,126 +403,121 @@
         document.getElementById('roleDiscipline').textContent = role.discipline || '—';
         document.getElementById('roleAliases').textContent = role.aliases || '—';
         const link = document.getElementById('roleProfileLink');
-        if (role.profile_link){
-          link.textContent = 'APS role profile';
-          link.href = role.profile_link;
-          link.classList.remove('hidden');
-        } else {
-          link.textContent = '';
-          link.href = '#';
-          link.classList.add('hidden');
-        }
+        if (role.profile_link){ link.textContent = 'APS role profile'; link.href = role.profile_link; link.classList.remove('hidden'); } else { link.textContent = ''; link.href = '#'; link.classList.add('hidden'); }
 
-        // Skills lists with SFIA names when available
-        const critUL = document.getElementById('criticalList');
-        const desUL = document.getElementById('desirableList');
-        critUL.innerHTML = '';
-        desUL.innerHTML = '';
-        const renderSkill = (code) => {
-          const meta = state.sfiaByCode.get(code);
-          const title = meta ? `${code} — ${meta.name}` : code;
-          const li = document.createElement('li');
-          li.textContent = title;
-          return li;
-        };
+        // Skills lists with SFIA names
+        const critUL = document.getElementById('criticalList'); const desUL = document.getElementById('desirableList');
+        critUL.innerHTML = ''; desUL.innerHTML = '';
+        const renderSkill = (code) => { const meta = state.sfiaByCode.get(code); const title = meta ? `${code} — ${meta.name}` : code; const li = document.createElement('li'); li.textContent = title; return li; };
         role.critical_skills.forEach(c => critUL.appendChild(renderSkill(c)));
         role.desirable_skills.forEach(c => desUL.appendChild(renderSkill(c)));
 
         // Courses mapping
-        const coursesDiv = document.getElementById('courses');
-        coursesDiv.innerHTML = '';
+        const coursesDiv = document.getElementById('courses'); coursesDiv.innerHTML = '';
         const iat = JSON.parse(document.getElementById('iat-courses').textContent);
         const matched = iat.courses.filter(c => c.mapsTo.some(m => role.name.toLowerCase().includes(m.toLowerCase())));
         (matched.length ? matched : iat.courses).forEach(c => {
-          const a = document.createElement('a');
-          a.href = c.link; a.target = '_blank';
-          a.className = 'block rounded-xl border border-slate-200 bg-slate-50 p-3 hover:bg-slate-100';
-          a.innerHTML = `<div class="text-sm font-medium">${c.name}</div>
-            <div class="text-xs text-slate-600">${c.provider} • ${c.delivery} • ${c.code}</div>`;
-          coursesDiv.appendChild(a);
+          const a = document.createElement('a'); a.href = c.link; a.target = '_blank'; a.className = 'block rounded-xl border border-slate-200 bg-slate-50 p-3 hover:bg-slate-100';
+          a.innerHTML = `<div class="text-sm font-medium">${c.name}</div><div class="text-xs text-slate-600">${c.provider} • ${c.delivery} • ${c.code}</div>`; coursesDiv.appendChild(a);
         });
 
+        // Live jobs
+        const pill = document.getElementById('jobsPill'); pill.classList.add('hidden');
+        if (document.getElementById('liveJobs').checked){
+          const count = await fetchJobs(role.name);
+          if (count !== null){ document.getElementById('jobCount').textContent = count.toLocaleString(); pill.classList.remove('hidden'); }
+        }
+
         // Update deep-link
-        const url = new URL(window.location);
-        url.searchParams.set('role', role.id);
-        history.replaceState(null, '', url.toString());
+        const url = new URL(window.location); url.searchParams.set('role', role.id); history.replaceState(null, '', url.toString());
       }
 
       function applyFilters(){
         const q = document.getElementById('searchBox').value.trim().toLowerCase();
         const cyberOnly = document.getElementById('cyberOnly').checked;
+        const domains = [...document.querySelectorAll('.domain:checked')].map(i=>i.value);
+        const levels = new Set([...document.querySelectorAll('.level:checked')].map(i=>Number(i.value)));
+        const sfia = document.getElementById('sfiaFilter').value.trim().toUpperCase();
+        const hasIat = document.getElementById('hasIat').checked;
+
+        const iat = JSON.parse(document.getElementById('iat-courses').textContent);
+        const hasMapTo = (role) => iat.courses.some(c => c.mapsTo.some(m => role.name.toLowerCase().includes(m.toLowerCase())));
+
         let arr = state.allRoles.slice();
         if (cyberOnly){ arr = arr.filter(isCyberRole); }
-        if (q){
-          arr = arr.filter(r => (r.name||'').toLowerCase().includes(q) || (r.description||'').toLowerCase().includes(q));
-        }
-        // Keep it performant
-        state.roles = arr.slice(0, 60);
+        if (q){ arr = arr.filter(r => (r.name||'').toLowerCase().includes(q) || (r.description||'').toLowerCase().includes(q)); }
+        arr = arr.filter(r => domains.includes(r.domain) || r.domain==='OTHER');
+        arr = arr.filter(r => levels.has(r.level));
+        if (sfia){ arr = arr.filter(r => r.critical_skills.includes(sfia) || r.desirable_skills.includes(sfia)); }
+        if (hasIat){ arr = arr.filter(r => hasMapTo(r)); }
+
+        state.roles = arr.slice(0, 160); // rich but still smooth
         renderGraph();
       }
 
       async function load(){
-        // Set source link
         document.getElementById('sourceLink').href = DIGITAL_ROLES_CSV;
-
         // Load SFIA
-        const sfiaRes = await fetch(SFIA8_CSV);
-        const sfiaText = await sfiaRes.text();
-        const sfia = Papa.parse(sfiaText, { header: true }).data;
-        sfia.forEach(row => {
-          if (row.code){
-            state.sfiaByCode.set(String(row.code).toUpperCase(), { name: row.name, category: row.category });
-          }
-        });
-
+        const sfiaRes = await fetch(SFIA8_CSV); const sfiaText = await sfiaRes.text(); const sfia = Papa.parse(sfiaText, { header: true }).data;
+        sfia.forEach(row => { if (row.code){ state.sfiaByCode.set(String(row.code).toUpperCase(), { name: row.name, category: row.category }); } });
         // Load roles
-        const rolesRes = await fetch(DIGITAL_ROLES_CSV);
-        const rolesText = await rolesRes.text();
-        const rows = Papa.parse(rolesText, { header: true }).data;
-        state.allRoles = rows
-          .filter(r => r && r.name)
-          .map(buildRoleObject);
-
+        const rolesRes = await fetch(DIGITAL_ROLES_CSV); const rolesText = await rolesRes.text(); const rows = Papa.parse(rolesText, { header: true }).data;
+        state.allRoles = rows.filter(r => r && r.name).map(buildRoleObject);
         applyFilters();
-
-        // Restore deep link
-        const params = new URLSearchParams(window.location.search);
-        const roleId = params.get('role');
-        if (roleId){
-          const r = state.roles.find(x => x.id === roleId) || state.allRoles.find(x => x.id === roleId);
-          if (r){
-            if (!state.roles.find(x => x.id === roleId)){
-              state.roles = [r, ...state.roles].slice(0,60);
-              renderGraph();
-            }
-            selectRole(r);
-          }
-        }
+        // deep link restore
+        const params = new URLSearchParams(window.location.search); const roleId = params.get('role');
+        if (roleId){ const r = state.roles.find(x => x.id === roleId) || state.allRoles.find(x => x.id === roleId); if (r){ if (!state.roles.find(x => x.id === roleId)){ state.roles = [r, ...state.roles].slice(0,160); renderGraph(); } selectRole(r); } }
       }
+
+      function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',1600); }
 
       // Events
       document.getElementById('searchBox').addEventListener('input', applyFilters);
       document.getElementById('cyberOnly').addEventListener('change', applyFilters);
-      document.getElementById('similarity').addEventListener('input', () => {
-        document.getElementById('similarityVal').textContent = (Number(document.getElementById('similarity').value)/100).toFixed(2);
-        renderGraph();
-      });
-      document.getElementById('clearBtn').addEventListener('click', () => {
-        document.getElementById('searchBox').value = '';
-        applyFilters();
-      });
-      document.getElementById('copyLinkBtn').addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(window.location.href);
-          alert('Link copied');
-        } catch (e){ /* ignore */ }
-      });
+      document.querySelectorAll('.domain').forEach(el=>el.addEventListener('change', applyFilters));
+      document.querySelectorAll('.level').forEach(el=>el.addEventListener('change', applyFilters));
+      document.getElementById('sfiaFilter').addEventListener('input', applyFilters);
+      document.getElementById('hasIat').addEventListener('change', applyFilters);
+      document.getElementById('similarity').addEventListener('input', () => { document.getElementById('similarityVal').textContent = (Number(document.getElementById('similarity').value)/100).toFixed(2); renderGraph(); });
+      document.getElementById('clearBtn').addEventListener('click', () => { document.getElementById('searchBox').value = ''; applyFilters(); });
+      document.getElementById('copyLinkBtn').addEventListener('click', async () => { try { await navigator.clipboard.writeText(window.location.href); toast('Link copied'); } catch (e){} });
+      document.getElementById('pathBtn').addEventListener('click', () => { const s = document.getElementById('startRole').value; const t = document.getElementById('targetRole').value; const path = shortestPath(s, t); if (!path.length){ toast('No pathway found: lower sensitivity?'); return; } highlightPath(path); const role = state.roles.find(r => r.id === t) || state.allRoles.find(r => r.id === t); if (role) selectRole(role); });
+      document.getElementById('resetBtn').addEventListener('click', () => { state.focusMode = false; document.getElementById('focusBtn').classList.remove('bg-indigo-50'); clearStyles(); state.cy.fit(); });
+      document.getElementById('focusBtn').addEventListener('click', () => { state.focusMode = !state.focusMode; document.getElementById('focusBtn').classList.toggle('bg-indigo-50'); if (state.focusMode && state.selectedRoleId){ focusNeighborhood(state.selectedRoleId); } else { clearStyles(); } });
+      document.getElementById('laneView').addEventListener('change', (e)=>{ state.laneView = e.target.checked; renderGraph(); });
+      document.getElementById('liveJobs').addEventListener('change', ()=>{ if (state.selectedRoleId){ const role = state.roles.find(r=>r.id===state.selectedRoleId) || state.allRoles.find(r=>r.id===state.selectedRoleId); if (role) selectRole(role); } });
+      document.getElementById('savePng').addEventListener('click', ()=>{ const png = state.cy.png({ full:true, scale:2 }); const a=document.createElement('a'); a.href=png; a.download='iat-cyber-pathways.png'; a.click(); });
 
       // Go!
-      load().catch(err => {
-        console.error(err);
-        alert('Failed to load role data. Check your network or CORS.');
-      });
+      load().catch(err => { console.error(err); alert('Failed to load role data. Check your network or CORS.'); });
+    </script>
+
+    <!-- Cloudflare Worker template (copy to worker.js). Set secrets ADZUNA_APP_ID and ADZUNA_APP_KEY in your Worker. -->
+    <script type="text/plain" id="worker-template">
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (url.pathname === "/jobs") {
+      const role = url.searchParams.get("role") || "";
+      if (!role) return new Response(JSON.stringify({ count: 0 }), { headers: { 'content-type': 'application/json' } });
+      const app_id = env.ADZUNA_APP_ID; // Add as Worker secret
+      const app_key = env.ADZUNA_APP_KEY; // Add as Worker secret
+      const api = `https://api.adzuna.com/v1/api/jobs/au/search/1?what=${encodeURIComponent(role)}&category=it-jobs&results_per_page=1&content-type=application/json&app_id=${app_id}&app_key=${app_key}`;
+      const cache = caches.default;
+      const cacheKey = new Request(request.url, request);
+      let response = await cache.match(cacheKey);
+      if (!response) {
+        const res = await fetch(api);
+        let count = 0;
+        try { const data = await res.json(); count = data.count ?? data.total ?? 0; } catch(e) {}
+        response = new Response(JSON.stringify({ count }), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' } });
+        ctx.waitUntil(cache.put(cacheKey, response.clone())); // 1 hour cache
+      }
+      return response;
+    }
+    return new Response("OK", { status: 200 });
+  }
+}
     </script>
   </body>
 </html>
