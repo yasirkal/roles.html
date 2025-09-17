@@ -491,11 +491,36 @@
         document.getElementById('sourceLink').href = DIGITAL_ROLES_CSV;
         // Load SFIA
         const sfiaRes = await fetch(SFIA8_CSV); const sfiaText = await sfiaRes.text(); const sfia = Papa.parse(sfiaText, { header: true }).data;
-        sfia.forEach(row => { if (row.code){ state.sfiaByCode.set(String(row.code).toUpperCase(), { name: row.name, category: row.category }); } });
-        // Load roles
-        const rolesRes = await fetch(DIGITAL_ROLES_CSV); const rolesText = await rolesRes.text(); const rows = Papa.parse(rolesText, { header: true }).data;
-        state.allRoles = rows.filter(r => r && r.name).map(buildRoleObject);
+        state.sfiaByCode.clear();
+        sfia.forEach(row => { if (!row) return; const code = String((row.code||row.Code||'')).toUpperCase(); if (code){ state.sfiaByCode.set(code, { name: row.name || row.Name || row['Skill name'] || '', category: row.category || row.Category || '' }); } });
+
+        // Load roles (normalise headers defensively)
+        let rolesText = '';
+        try{ const rolesRes = await fetch(DIGITAL_ROLES_CSV); rolesText = await rolesRes.text(); } catch(e){ rolesText=''; }
+        const parsed = Papa.parse(rolesText, { header: true });
+        const rowsRaw = Array.isArray(parsed.data) ? parsed.data : [];
+        function normKey(k){ return String(k||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''); }
+        const rows = rowsRaw.map(obj => { const o={}; for (const k in obj){ if(!k) continue; o[normKey(k)] = obj[k]; } return o; });
+        state.allRoles = rows.filter(r => r && Object.keys(r).length).map(buildRoleObject).filter(r => !!r.name && r.name !== 'Unnamed role');
+
+        if (!state.allRoles.length){
+          // Fallback sample so UI remains interactive if source blocked
+          console.warn('No roles parsed from CSV; using fallback sample.');
+          state.allRoles = [
+            { id:'soc-analyst', name:'Security Operations (SOC) Analyst', description:'Monitor and triage security events.', discipline:'Cyber', aliases:'SOC Analyst', profile_link:'', critical_skills:['MONI','INAS','PEDP'], desirable_skills:['CORE','ETRC'], domain:'SOC', level:0 },
+            { id:'incident-responder', name:'Incident Responder', description:'Respond to and remediate incidents.', discipline:'Cyber', aliases:'IR', profile_link:'', critical_skills:['INAS','IRMG','BURM'], desirable_skills:['CSMG'], domain:'SOC', level:1 },
+            { id:'security-architect', name:'Security Architect', description:'Design secure systems and platforms.', discipline:'Cyber', aliases:'', profile_link:'', critical_skills:['ARCH','SCAD','CLDM'], desirable_skills:['DGFS'], domain:'ARCH', level:3 },
+            { id:'pentester', name:'Penetration Tester', description:'Assess systems via ethical hacking.', discipline:'Cyber', aliases:'Red Team', profile_link:'', critical_skills:['PENT','TEST','AURE'], desirable_skills:['INAS'], domain:'PENTEST', level:2 }
+          ];
+          toast('Loaded fallback roles (source blocked or format changed).');
+        } else {
+          toast('Loaded '+state.allRoles.length+' roles');
+        }
+
         applyFilters();
+        // if nothing visible under current filters, relax cyberOnly and retry
+        if (!state.roles.length){ const cb = document.getElementById('cyberOnly'); cb.checked=false; applyFilters(); }
+
         // deep link restore
         const params = new URLSearchParams(window.location.search); const roleId = params.get('role');
         if (roleId){ const r = state.roles.find(x => x.id === roleId) || state.allRoles.find(x => x.id === roleId); if (r){ if (!state.roles.find(x => x.id === roleId)){ state.roles = [r, ...state.roles].slice(0,160); renderGraph(); } selectRole(r); } }
