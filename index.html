@@ -1,457 +1,313 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion, useScroll, useSpring, useTransform } from "framer-motion";
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IAT Digital – Tech Jobs (AU)</title>
+  <!-- Tailwind (no build) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-white text-slate-900">
+  <div id="root"></div>
 
-/**
- * IAT Digital – Landing Page Clone Scaffold
- * ---------------------------------------------------------
- * What this gives you (out‑of‑the‑box):
- *  - A modern landing page structure with animation hooks that can be tuned
- *    to closely match a reference site’s motion language without copying code.
- *  - Sections for course promos + Australian labour‑market insights.
- *  - ABS (Australian Bureau of Statistics) SDMX‑JSON adapter + example charts.
- *  - A single‑file component, easy to drop into OpenLearning (OL) iframed widgets.
- *
- * How to use:
- *  1) Replace BRAND + tokens in THEME to match your target page.
- *  2) Swap MOCK data for live ABS API data by uncommenting `fetchABS()` calls
- *     and filling in dataset + keyed dimensions (see ABS Data API user guide).
- *  3) Populate `COURSES` with IAT Digital offerings.
- *
- * Legal note:
- *  This file emulates interactions/layout generically and does NOT copy any
- *  proprietary assets or source from another site. Use it to achieve a
- *  pixel‑close feel while staying on the right side of IP.
- */
+  <!-- React (UMD) + Babel Standalone to transpile JSX in the browser -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-// —————————————————————————————————————————————
-// THEME TOKENS – tweak these to mimic a reference site
-// —————————————————————————————————————————————
-const THEME = {
-  brand: {
-    name: "IAT Digital",
-    primary: "from-indigo-500 via-sky-500 to-cyan-400",
-    accent: "#0ea5e9", // tailwind sky-500
-    dark: "#0b1020",
-    light: "#f8fafc",
-  },
-  radius: {
-    xl: "rounded-2xl",
-    lg: "rounded-xl",
-  },
-  motion: {
-    duration: 0.9,
-    delay: 0.08,
-    ease: [0.16, 1, 0.3, 1] as [number, number, number, number], // power‑easing
-    parallaxStrength: 120,
-  },
-  layout: {
-    max: "max-w-7xl",
-    gutter: "px-5 sm:px-8",
-  },
-};
+  <!-- framer-motion UMD + Recharts UMD -->
+  <script src="https://unpkg.com/framer-motion/dist/framer-motion.umd.js"></script>
+  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
 
-// —————————————————————————————————————————————
-// UTIL: fade/slide in
-// —————————————————————————————————————————————
-const MotionWrap: React.FC<React.PropsWithChildren<{ delay?: number }>> = ({ children, delay = 0 }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 24 }}
-    whileInView={{ opacity: 1, y: 0 }}
-    viewport={{ once: true, amount: 0.3 }}
-    transition={{ duration: THEME.motion.duration, ease: THEME.motion.ease, delay }}
-  >
-    {children}
-  </motion.div>
-);
+  <!-- Your app (JSX here; Babel will transpile it) -->
+  <script type="text/babel">
+    const { useEffect, useMemo, useState } = React;
+    const { createRoot } = ReactDOM;
+    const { motion } = window.framerMotion;       // framer-motion UMD global
+    const {
+      ResponsiveContainer, CartesianGrid, Tooltip, Legend,
+      BarChart, Bar, XAxis, YAxis
+    } = window.Recharts;                          // Recharts UMD global
 
-// —————————————————————————————————————————————
-// MOCK: sample series for charts (swap with live ABS later)
-// —————————————————————————————————————————————
-const MOCK_UNEMPLOYMENT = [
-  { period: "2024-08", value: 4.2 },
-  { period: "2024-09", value: 4.1 },
-  { period: "2024-10", value: 4.3 },
-  { period: "2024-11", value: 4.2 },
-  { period: "2024-12", value: 4.1 },
-  { period: "2025-01", value: 4.2 },
-  { period: "2025-02", value: 4.0 },
-  { period: "2025-03", value: 4.1 },
-  { period: "2025-04", value: 4.1 },
-  { period: "2025-05", value: 4.2 },
-  { period: "2025-06", value: 4.1 },
-  { period: "2025-07", value: 4.0 },
-];
+    // ------------------ Config ------------------
+    const PROXY_BASE = "https://iat-data-proxy.yasirkaleem.workers.dev"; // your Worker
+    const ENDPOINTS = {
+      ivi:  `${PROXY_BASE}/v1/data/jsa/ivi`,
+      proj: `${PROXY_BASE}/v1/data/jsa/projections`,
+      earn: `${PROXY_BASE}/v1/data/abs/earnings`,
+      unemp:`${PROXY_BASE}/v1/data/abs/unemployment`,
+    };
+    const THEME = {
+      brand: { name: "IAT Digital", primary: "#00539f", gradient: "from-[#0f172a] via-[#0b2a4a] to-[#00539f]" },
+      layout: { max: "max-w-7xl", gutter: "px-5 sm:px-8" },
+      radius: { xl: "rounded-2xl" }
+    };
+    const STREAMS = {
+      all:      { label: "All Tech", codes: ["1351","2611","2612","2613","2621","2622","2631","2632","2633"] },
+      ai:       { label: "AI",       codes: ["2613","2611","2612","2621"] },
+      cyber:    { label: "Cyber",    codes: ["2622","2631","2632","1351"] },
+      data:     { label: "Data",     codes: ["2611","2621","2613"] },
+      cloud:    { label: "Cloud",    codes: ["2631","2621","1351"] },
+      software: { label: "Software", codes: ["2613","2612","2632"] },
+    };
+    const TABS = Object.entries(STREAMS).map(([key, v]) => ({ key, label: v.label }));
+    const COURSES = [
+      { code: "AI",   title: "Artificial Intelligence", href: "https://www.iat.tafensw.edu.au/iat-digital/artificial-intelligence" },
+      { code: "DATA", title: "Big Data",                href: "https://www.iat.tafensw.edu.au/iat-digital/big-data" },
+      { code: "CLOUD",title: "Cloud Computing",         href: "https://www.iat.tafensw.edu.au/iat-digital/cloud-computing" },
+      { code: "CYBER",title: "Cyber Security",          href: "https://www.iat.tafensw.edu.au/iat-digital/cyber-security" },
+      { code: "SOFT", title: "Software",                href: "https://www.iat.tafensw.edu.au/iat-digital/software" },
+    ];
+    const nf = new Intl.NumberFormat("en-AU");
+    const cf = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", maximumFractionDigits: 0 });
 
-const MOCK_VACANCIES = [
-  { period: "2024-Q3", vacancies: 430000 },
-  { period: "2024-Q4", vacancies: 425000 },
-  { period: "2025-Q1", vacancies: 420000 },
-  { period: "2025-Q2", vacancies: 415000 },
-];
+    async function getJSON(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Fetch failed " + res.status);
+      return res.json();
+    }
+    function filterByCodes(rows, codes) {
+      const set = new Set(codes);
+      return (rows || []).filter((r) => set.has(String(r.anzsco4)));
+    }
 
-// —————————————————————————————————————————————
-// ABS SDMX‑JSON helper (generic)
-// —————————————————————————————————————————————
-const ABS_BASE = "https://api.data.abs.gov.au"; // SDMX REST (Beta)
+    // ------------------ UI ------------------
+    const Hero = () => (
+      <section className="relative isolate overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white">
+        <div className="absolute -inset-16 opacity-70 [mask-image:radial-gradient(60%_50%_at_50%_40%,black,transparent)] pointer-events-none">
+          <div className={"h-[40rem] w-[140%] -translate-x-1/5 -translate-y-20 rotate-6 bg-gradient-to-r " + THEME.brand.gradient + " blur-3xl"} />
+        </div>
+        <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-28 sm:py-36 relative`}>
+          <motion.h1 initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.9 }} className="text-4xl sm:text-6xl font-extrabold tracking-tight">
+            Upskill for in-demand tech roles with <span className="text-sky-400">{THEME.brand.name}</span>
+          </motion.h1>
+          <motion.p initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.9, delay: 0.05 }} className="mt-6 max-w-2xl text-lg text-slate-200">
+            Short microcredentials in AI, Data, Cloud and Cyber — with live Australian job-market insight.
+          </motion.p>
+          <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.9, delay: 0.1 }} className="mt-10 flex flex-wrap gap-4">
+            <a href="#courses" className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-6 py-3 font-semibold text-slate-900 hover:bg-sky-400 transition">Explore courses</a>
+            <a href="#jobs" className="inline-flex items-center gap-2 rounded-full border border-slate-600 px-6 py-3 font-semibold hover:bg-slate-800/60 transition">Tech job insights</a>
+          </motion.div>
+        </div>
+      </section>
+    );
 
-/**
- * fetchABS – generic SDMX call.
- * @param dataflow e.g. "ABS,LF,1.0" (Labour Force) or other dataset id
- * @param key      SDMX key path, e.g. "A.AUS.M" or full dimension key
- * @param params   { startPeriod: "2020", endPeriod: "2025" }
- */
-async function fetchABS(dataflow: string, key: string, params: Record<string, string> = {}) {
-  const search = new URLSearchParams({ format: "sdmx-json", ...params }).toString();
-  const url = `${ABS_BASE}/data/${encodeURIComponent(dataflow)}/${key}?${search}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`ABS fetch failed (${res.status})`);
-  return res.json();
-}
-
-/**
- * parseSDMXSeries – flattens ABS SDMX‑JSON data message into { period, value }[]
- * This works for single‑measure datasets. For multi‑measure, extend as needed.
- */
-function parseSDMXSeries(msg: any): { period: string; value: number }[] {
-  if (!msg || !msg.data || !msg.data.structure || !msg.data.dataSets?.[0]) return [];
-  const { structure, dataSets } = msg.data;
-  const dataset = dataSets[0];
-  const dims = structure?.dimensions?.observation || [];
-  const timeIndex = dims.findIndex((d: any) => d.id.toLowerCase().includes("time"));
-  // Build code lists for observation dimensions
-  const dimMaps = dims.map((dim: any) => dim.values?.map((v: any) => v.name || v.id) || []);
-
-  const out: { period: string; value: number }[] = [];
-  const obs = dataset.observations || {};
-  for (const k of Object.keys(obs)) {
-    const idx = k.split(":").map((n) => parseInt(n, 10));
-    const val = Array.isArray(obs[k]) ? obs[k][0] : obs[k];
-    const period = timeIndex >= 0 ? dimMaps[timeIndex][idx[timeIndex]] : String(idx[idx.length - 1]);
-    if (val != null) out.push({ period, value: Number(val) });
-  }
-  // Sort by period (basic) – improve with a proper date parser if needed
-  return out.sort((a, b) => (a.period > b.period ? 1 : -1));
-}
-
-// —————————————————————————————————————————————
-// Demo course data (swap with live IAT Digital catalogue)
-// —————————————————————————————————————————————
-const COURSES = [
-  {
-    code: "AI‑900",
-    title: "Azure AI Fundamentals",
-    blurb: "Kickstart AI literacy with Azure AI services, responsible AI, and basic ML concepts.",
-    tag: "AI",
-    href: "#",
-  },
-  {
-    code: "DP‑900",
-    title: "Azure Data Fundamentals",
-    blurb: "Understand core data concepts, relational vs. non‑relational data, and analytics on Azure.",
-    tag: "Data",
-    href: "#",
-  },
-  {
-    code: "AZ‑900",
-    title: "Azure Fundamentals",
-    blurb: "Cloud principles, services, governance, and cost management in Azure.",
-    tag: "Cloud",
-    href: "#",
-  },
-  {
-    code: "SOC Track",
-    title: "Security Operations Foundations",
-    blurb: "Hands‑on detections, triage, and threat intel workflows for SOC readiness.",
-    tag: "Cyber",
-    href: "#",
-  },
-];
-
-// —————————————————————————————————————————————
-// Pretty number formatter
-// —————————————————————————————————————————————
-const nf = new Intl.NumberFormat("en-AU");
-
-// —————————————————————————————————————————————
-// Sections
-// —————————————————————————————————————————————
-const Hero: React.FC = () => {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
-  const y = useTransform(scrollYProgress, [0, 1], [0, -THEME.motion.parallaxStrength]);
-  const scale = useTransform(scrollYProgress, [0, 1], [1, 1.08]);
-  const spring = useSpring(scale, { stiffness: 80, damping: 20 });
-
-  return (
-    <section ref={ref} className="relative isolate overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-white">
-      {/* Glow / gradient */}
-      <motion.div
-        style={{ y }}
-        className="pointer-events-none absolute -inset-16 opacity-70 [mask-image:radial-gradient(60%_50%_at_50%_40%,black,transparent)]"
-      >
-        <div className={`h-[40rem] w-[140%] -translate-x-1/5 -translate-y-20 rotate-6 bg-gradient-to-r ${THEME.brand.primary} blur-3xl`} />
-      </motion.div>
-
-      <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-28 sm:py-36 relative`}>
-        <MotionWrap>
-          <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight">
-            Upskill for in‑demand roles with <span className="text-sky-400">{THEME.brand.name}</span>
-          </h1>
-        </MotionWrap>
-        <MotionWrap delay={0.08}>
-          <p className="mt-6 max-w-2xl text-lg text-slate-200">
-            Short, industry‑backed microcredentials in AI, Data, Cloud and Cyber — delivered with
-            real Australian labour‑market insight.
-          </p>
-        </MotionWrap>
-        <MotionWrap delay={0.16}>
-          <div className="mt-10 flex flex-wrap gap-4">
-            <a href="#courses" className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-6 py-3 font-semibold text-slate-900 hover:bg-sky-400 transition">
-              Explore courses
-            </a>
-            <a href="#jobs" className="inline-flex items-center gap-2 rounded-full border border-slate-600 px-6 py-3 font-semibold hover:bg-slate-800/60 transition">
-              Job insights (ABS)
-            </a>
+    const Courses = () => (
+      <section id="courses" className="bg-white text-slate-900">
+        <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20`}>
+          <h2 className="text-3xl sm:text-4xl font-bold">Courses</h2>
+          <p className="mt-3 text-slate-600 max-w-2xl">Flexible, stackable units aligned to real job outcomes.</p>
+          <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+            {COURSES.map((c) => (
+              <a key={c.code} href={c.href} className={`block h-full ${THEME.radius.xl} border border-slate-200 p-5 hover:shadow-lg transition bg-white`}>
+                <div className="text-xs uppercase tracking-wider text-slate-500">{c.code}</div>
+                <div className="mt-1 text-lg font-semibold">{c.title}</div>
+                <div className="mt-6 inline-flex items-center gap-2 text-sky-600 font-medium">View →</div>
+              </a>
+            ))}
           </div>
-        </MotionWrap>
-      </div>
-    </section>
-  );
-};
-
-const Courses: React.FC = () => (
-  <section id="courses" className="bg-white text-slate-900">
-    <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20`}>
-      <MotionWrap>
-        <h2 className="text-3xl sm:text-4xl font-bold">Courses</h2>
-        <p className="mt-3 text-slate-600 max-w-2xl">
-          Flexible, stackable units aligned to real job outcomes. Select a stream to view details.
-        </p>
-      </MotionWrap>
-      <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {COURSES.map((c, i) => (
-          <MotionWrap key={c.code} delay={i * THEME.motion.delay}>
-            <a href={c.href} className={`block h-full ${THEME.radius.xl} border border-slate-200 p-5 hover:shadow-lg transition bg-white`}> 
-              <div className="text-xs uppercase tracking-wider text-slate-500">{c.tag}</div>
-              <div className="mt-1 text-xl font-semibold">{c.title}</div>
-              <p className="mt-2 text-sm text-slate-600">{c.blurb}</p>
-              <div className="mt-6 inline-flex items-center gap-2 text-sky-600 font-medium">View details →</div>
-            </a>
-          </MotionWrap>
-        ))}
-      </div>
-    </div>
-  </section>
-);
-
-// —————————————————————————————————————————————
-// ABS jobs insight section
-// —————————————————————————————————————————————
-const JobsInsight: React.FC = () => {
-  const [unemp, setUnemp] = useState(MOCK_UNEMPLOYMENT);
-  const [vac, setVac] = useState(MOCK_VACANCIES);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Example: swap to live once dataset and keys are chosen.
-    // See: https://www.abs.gov.au/about/data-services/application-programming-interfaces-apis/data-api-user-guide/using-api
-    //
-    // (1) UNEMPLOYMENT rate – Labour Force (dataset id varies by release)
-    // fetchABS("ABS,LF,1.0", "<DIM_KEYS_HERE>", { startPeriod: "2024-08" })
-    //   .then(parseSDMXSeries)
-    //   .then(setUnemp)
-    //   .catch((e) => setError(e.message));
-    //
-    // (2) JOB VACANCIES – Job Vacancies, Australia dataset
-    // fetchABS("ABS,JVS,1.0", "<DIM_KEYS_HERE>", { startPeriod: "2024-Q3" })
-    //   .then(parseSDMXSeries)
-    //   .then((rows) => setVac(rows.map(r => ({ period: r.period, vacancies: r.value }))))
-    //   .catch((e) => setError(e.message));
-  }, []);
-
-  const latestUnemp = unemp[unemp.length - 1]?.value ?? null;
-  const latestVac = vac[vac.length - 1]?.vacancies ?? null;
-
-  return (
-    <section id="jobs" className="bg-slate-50">
-      <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20`}>
-        <MotionWrap>
-          <h2 className="text-3xl sm:text-4xl font-bold">Australian job trends</h2>
-          <p className="mt-3 max-w-2xl text-slate-600">
-            Live indicators sourced from the Australian Bureau of Statistics (ABS). Replace the mock series with
-            the ABS Data API (SDMX‑JSON) calls in code.
-          </p>
-        </MotionWrap>
-
-        {error && (
-          <div className="mt-6 text-sm text-red-600">ABS data error: {error}</div>
-        )}
-
-        {/* Stats cards */}
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <MotionWrap>
-            <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}>
-              <div className="text-slate-500 text-sm">Unemployment rate (latest)</div>
-              <div className="mt-1 text-3xl font-bold">{latestUnemp ? `${latestUnemp.toFixed(1)}%` : "—"}</div>
-              <div className="mt-2 text-slate-500 text-xs">Source: ABS Labour Force</div>
-            </div>
-          </MotionWrap>
-
-          <MotionWrap delay={0.08}>
-            <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}>
-              <div className="text-slate-500 text-sm">Job vacancies (latest)</div>
-              <div className="mt-1 text-3xl font-bold">{latestVac ? nf.format(latestVac) : "—"}</div>
-              <div className="mt-2 text-slate-500 text-xs">Source: ABS Job Vacancies, Australia</div>
-            </div>
-          </MotionWrap>
         </div>
+      </section>
+    );
 
-        {/* Charts */}
-        <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <MotionWrap>
-            <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}> 
-              <h3 className="text-lg font-semibold">Unemployment rate (trend)</h3>
-              <div className="mt-4 h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={unemp} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="period" hide={true} />
-                    <YAxis domain={[0, "dataMax + 1"]} tickFormatter={(v) => `${v}%`} />
-                    <Tooltip formatter={(v: any) => `${v}%`} />
-                    <Legend />
-                    <Line type="monotone" dataKey="value" name="Unemployment %" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
+    function JobsDashboard() {
+      const [tab, setTab] = useState("all");
+      const [ivi, setIvi] = useState([]);
+      const [proj, setProj] = useState([]);
+      const [earn, setEarn] = useState([]);
+      const [unemp, setUnemp] = useState([]);
+      const [error, setError] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        let mounted = true;
+        (async () => {
+          try {
+            setLoading(true);
+            const [iviJson, projJson, earnJson, unempJson] = await Promise.all([
+              getJSON(ENDPOINTS.ivi),
+              getJSON(ENDPOINTS.proj),
+              getJSON(ENDPOINTS.earn),
+              getJSON(ENDPOINTS.unemp),
+            ]);
+            if (!mounted) return;
+            setIvi(iviJson.rows || []);
+            setProj(projJson.rows || []);
+            setEarn(earnJson.rows || []);
+            setUnemp(unempJson.rows || []);
+            setError(null);
+          } catch (e) {
+            if (!mounted) return;
+            setError(e?.message || "Data load failed");
+          } finally {
+            if (mounted) setLoading(false);
+          }
+        })();
+        return () => { mounted = false; };
+      }, []);
+
+      const codes = STREAMS[tab].codes;
+      const iviSel  = useMemo(() => filterByCodes(ivi,  codes), [ivi, codes]);
+      const projSel = useMemo(() => filterByCodes(proj, codes), [proj, codes]);
+      const earnSel = useMemo(() => filterByCodes(earn, codes), [earn, codes]);
+
+      const medianWeekly = useMemo(() => {
+        if (!earnSel.length) return null;
+        const vals = earnSel.map((r) => r.median_weekly).filter((v) => v > 0).sort((a, b) => a - b);
+        const mid = Math.floor(vals.length / 2);
+        return vals.length % 2 ? vals[mid] : Math.round((vals[mid - 1] + vals[mid]) / 2);
+      }, [earnSel]);
+
+      const latestAds = useMemo(() => {
+        if (!iviSel.length) return null;
+        const latestMonth = iviSel.map((r) => r.month).sort().slice(-1)[0];
+        const sum = iviSel.filter((r) => r.month === latestMonth).reduce((a, b) => a + (b.ads || 0), 0);
+        return { month: latestMonth, ads: sum };
+      }, [iviSel]);
+
+      const employmentApprox = 650000;
+      const occupancyPct = latestAds && latestAds.ads ? (employmentApprox / (employmentApprox + latestAds.ads)) * 100 : null;
+
+      const yoyGrowthPct = useMemo(() => {
+        if (!projSel.length) return null;
+        const avg = projSel.reduce((a, b) => a + (b.growth_pct || 0), 0) / projSel.length;
+        return Math.round(avg * 10) / 10;
+      }, [projSel]);
+
+      const earnBar = useMemo(() => earnSel.map((r) => ({ occupation: r.occupation, value: r.median_weekly })), [earnSel]);
+      const projBar = useMemo(() => projSel.map((r) => ({ occupation: r.occupation, growth_pct: r.growth_pct, jobs_change: r.jobs_change })), [projSel]);
+
+      return (
+        <section id="jobs" className="bg-slate-50">
+          <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-3xl sm:text-4xl font-bold">Tech jobs in Australia</h2>
+              {unemp.length > 0 && (
+                <div className="ml-auto text-sm text-slate-600">
+                  Headline unemployment: {Number(unemp[unemp.length - 1].value).toFixed(1)}%
+                </div>
+              )}
+            </div>
+            <p className="mt-3 max-w-3xl text-slate-600">
+              Metrics tailored to ICT occupations (ANZSCO 4-digit). Sources: ABS (earnings) & Jobs and Skills Australia (IVI job ads & projections).
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {TABS.map((t) => (
+                <button key={t.key} onClick={() => setTab(t.key)} className={`rounded-full px-4 py-2 border text-sm ${tab === t.key ? "bg-sky-500 text-white border-sky-500" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {error && <div className="mt-6 text-sm text-red-600">Data error: {error}</div>}
+            {loading && <div className="mt-6 text-sm text-slate-500">Loading data…</div>}
+
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}>
+                <div className="text-slate-500 text-sm">Median weekly salary (tech)</div>
+                <div className="mt-1 text-3xl font-bold">{medianWeekly ? cf.format(medianWeekly) : "—"}</div>
+                <div className="mt-2 text-slate-500 text-xs">ABS Employee Earnings (ICT)</div>
               </div>
-              <p className="mt-2 text-xs text-slate-500">Add dataset + dimension keys in code to go live.</p>
-            </div>
-          </MotionWrap>
-
-          <MotionWrap delay={0.08}>
-            <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}> 
-              <h3 className="text-lg font-semibold">Job vacancies (quarters)</h3>
-              <div className="mt-4 h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={vac} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="period" />
-                    <YAxis tickFormatter={(v) => nf.format(Number(v))} />
-                    <Tooltip formatter={(v: any) => nf.format(Number(v))} />
-                    <Legend />
-                    <Bar dataKey="vacancies" name="Vacancies" fill="#0ea5e9" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}>
+                <div className="text-slate-500 text-sm">Job ads this month (IVI)</div>
+                <div className="mt-1 text-3xl font-bold">{latestAds ? nf.format(latestAds.ads) : "—"}</div>
+                <div className="mt-2 text-slate-500 text-xs">JSA Internet Vacancy Index</div>
               </div>
-              <p className="mt-2 text-xs text-slate-500">Source will display ABS once connected.</p>
+              <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}>
+                <div className="text-slate-500 text-sm">% jobs occupancy (proxy)</div>
+                <div className="mt-1 text-3xl font-bold">{occupancyPct ? `${occupancyPct.toFixed(1)}%` : "—"}</div>
+                <div className="mt-2 text-slate-500 text-xs">Employment / (Employment + Ads)</div>
+              </div>
+              <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}>
+                <div className="text-slate-500 text-sm">% growth (avg)</div>
+                <div className="mt-1 text-3xl font-bold">{yoyGrowthPct != null ? `${yoyGrowthPct}%` : "—"}</div>
+                <div className="mt-2 text-slate-500 text-xs">JSA Projections to May 2034</div>
+              </div>
             </div>
-          </MotionWrap>
-        </div>
-      </div>
-    </section>
-  );
-};
 
-const ValueProps: React.FC = () => (
-  <section className="bg-white">
-    <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20`}>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {["Industry‑led", "Flexible", "Job‑aligned"].map((title, i) => (
-          <MotionWrap key={title} delay={i * THEME.motion.delay}>
-            <div className={`h-full ${THEME.radius.xl} border border-slate-200 p-6`}> 
-              <div className="text-xl font-semibold">{title}</div>
-              <p className="mt-2 text-slate-600 text-sm">
-                Practical learning with mentors and current tools. Short sprints to stack into a pathway.
-              </p>
+            <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}>
+                <h3 className="text-lg font-semibold">Median weekly earnings by occupation</h3>
+                <div className="mt-4 h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={earnBar} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="occupation" interval={0} angle={-10} textAnchor="end" height={60} />
+                      <YAxis tickFormatter={(v) => cf.format(Number(v))} />
+                      <Tooltip formatter={(v) => cf.format(Number(v))} />
+                      <Legend />
+                      <Bar dataKey="value" name="Median weekly" fill={THEME.brand.primary} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">Source: ABS Employee Earnings (curated tech ANZSCO 4-digit).</p>
+              </div>
+
+              <div className={`bg-white ${THEME.radius.xl} border border-slate-200 p-6`}>
+                <h3 className="text-lg font-semibold">Projected growth to 2034 (tech)</h3>
+                <div className="mt-4 h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={projBar} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="occupation" interval={0} angle={-10} textAnchor="end" height={60} />
+                      <YAxis yAxisId="left" tickFormatter={(v) => `${v}%`} />
+                      <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => nf.format(Number(v))} />
+                      <Tooltip />
+                      <Legend />
+                      <Bar yAxisId="left" dataKey="growth_pct" name="Growth %" fill="#0284c7" />
+                      <Bar yAxisId="right" dataKey="jobs_change" name="Jobs added" fill="#60a5fa" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">Source: Jobs and Skills Australia – Employment Projections (to May 2034).</p>
+              </div>
             </div>
-          </MotionWrap>
-        ))}
-      </div>
-    </div>
-  </section>
-);
+          </div>
+        </section>
+      );
+    }
 
-const CTA: React.FC = () => (
-  <section className="relative isolate overflow-hidden bg-slate-900 text-white">
-    <div className="absolute inset-0 -z-10 opacity-80 [mask-image:radial-gradient(50%_50%_at_50%_40%,black,transparent)]">
-      <div className={`absolute -top-28 left-1/2 h-80 w-[120%] -translate-x-1/2 rotate-12 bg-gradient-to-r ${THEME.brand.primary} blur-3xl`} />
-    </div>
-    <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20 text-center`}>
-      <MotionWrap>
-        <h2 className="text-3xl sm:text-4xl font-bold">Ready to start?</h2>
-        <p className="mt-3 text-slate-200 max-w-2xl mx-auto">
-          Join the next intake and build portfolio‑ready skills in weeks, not years.
-        </p>
-      </MotionWrap>
-      <MotionWrap delay={0.08}>
-        <div className="mt-8 flex justify-center">
-          <a href="#courses" className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-8 py-3 font-semibold text-slate-900 hover:bg-sky-400 transition">
-            See intakes
-          </a>
+    const CTA = () => (
+      <section className="relative isolate overflow-hidden bg-slate-900 text-white">
+        <div className="absolute inset-0 -z-10 opacity-80 [mask-image:radial-gradient(50%_50%_at_50%_40%,black,transparent)]">
+          <div className={"absolute -top-28 left-1/2 h-80 w-[120%] -translate-x-1/2 rotate-12 bg-gradient-to-r " + THEME.brand.gradient + " blur-3xl"}></div>
         </div>
-      </MotionWrap>
-    </div>
-  </section>
-);
+        <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto py-20 text-center`}>
+          <h2 className="text-3xl sm:text-4xl font-bold">Ready to start?</h2>
+          <p className="mt-3 text-slate-200 max-w-2xl mx-auto">Join the next intake and build portfolio-ready skills in weeks, not years.</p>
+          <div className="mt-8 flex justify-center">
+            <a href="#courses" className="inline-flex items-center gap-2 rounded-full bg-sky-500 px-8 py-3 font-semibold text-slate-900 hover:bg-sky-400 transition">See intakes</a>
+          </div>
+        </div>
+      </section>
+    );
 
-const Footer: React.FC = () => (
-  <footer className="bg-white py-12">
-    <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto grid sm:grid-cols-2 gap-6 text-sm text-slate-600`}>
-      <div>
-        <div className="font-semibold text-slate-900">{THEME.brand.name}</div>
-        <p className="mt-2">© {new Date().getFullYear()} IAT Digital. All rights reserved.</p>
-      </div>
-      <div className="sm:text-right">
-        <a href="#jobs" className="hover:underline">Data sources: ABS (API, SDMX‑JSON)</a>
-      </div>
-    </div>
-  </footer>
-);
+    const Footer = () => (
+      <footer className="bg-white py-12">
+        <div className={`${THEME.layout.max} ${THEME.layout.gutter} mx-auto grid sm:grid-cols-2 gap-6 text-sm text-slate-600`}>
+          <div>
+            <div className="font-semibold text-slate-900">{THEME.brand.name}</div>
+            <p className="mt-2">© {new Date().getFullYear()} IAT Digital. All rights reserved.</p>
+          </div>
+          <div className="sm:text-right">Data sources: ABS; Jobs and Skills Australia</div>
+        </div>
+      </footer>
+    );
 
-export default function IATDigitalLandingClone() {
-  return (
-    <main className="font-sans text-slate-900">
-      <Hero />
-      <ValueProps />
-      <Courses />
-      <JobsInsight />
-      <CTA />
-      <Footer />
-    </main>
-  );
-}
+    function App() {
+      return (
+        <main className="font-sans">
+          <Hero />
+          <Courses />
+          <JobsDashboard />
+          <CTA />
+          <Footer />
+        </main>
+      );
+    }
 
-// —————————————————————————————————————————————
-// IMPLEMENTOR NOTES
-// —————————————————————————————————————————————
-// • Matching animations exactly
-//   - Adjust THEME.motion.duration, ease, and parallaxStrength.
-//   - Tune MotionWrap delays to replicate the reference page’s stagger.
-//   - For scroll‑bound effects, increase the hero’s gradient size + transform.
-//
-// • ABS API hookup (examples you can construct after picking a dataset):
-//   - Unemployment rate (series from Labour Force, Australia):
-//     fetchABS("ABS,LF,1.0", "<MEASURE>.<REGION>.<SEX>.<FREQUENCY>", { startPeriod: "2023-01" })
-//     See: ABS Data API user guide \u2192 Using the API.
-//
-//   - Job Vacancies:
-//     fetchABS("ABS,JVS,1.0", "<INDUSTRY>.<STATE>.<FREQUENCY>", { startPeriod: "2024-Q1" })
-//
-// • OpenLearning embed tips (as per your preference):
-//   - Set iframe height to 680px (560px under 900px width, 460px under 640px) for a neat fold.
-//   - Keep external requests minimal; pre‑hydrate small JSON where possible.
-//
-// • Accessibility:
-//   - MotionWrap viewport={once:true} reduces repeated animation for keyboard users.
-//   - Ensure colour contrast meets WCAG AA when you finalise colours.
+    createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
